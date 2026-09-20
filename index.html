@@ -1,16 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" manifest="cache.appcache">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>RAW 13.52</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Jailbreak</title>
 <style>
   *{ box-sizing:border-box; }
 
-  html{
-    height:100%;
-    background:#0b0d10;
-  }
+  html{ height:100%; background:#08090c; }
 
   html::before{
     content:"";
@@ -24,7 +21,7 @@
     position:fixed;
     inset:0;
     background:radial-gradient(ellipse at center,
-      rgba(0,0,0,.05) 0%, rgba(0,0,0,.42) 100%);
+      rgba(0,0,0,.06) 0%, rgba(0,0,0,.45) 100%);
     z-index:-1;
     pointer-events:none;
   }
@@ -35,25 +32,32 @@
     display:flex;
     align-items:center;
     justify-content:center;
-    padding:24px 20px;
+    padding:
+      calc(24px + env(safe-area-inset-top))
+      calc(20px + env(safe-area-inset-right))
+      calc(24px + env(safe-area-inset-bottom))
+      calc(20px + env(safe-area-inset-left));
     color:#eef2f7;
     font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
+    transition: align-items .35s ease;
   }
 
   #card{
     position:relative;
-    width:min(92vw,440px);
-    border-radius:16px;
-    background:rgba(255,255,255,.07);
-    border:1px solid rgba(255,255,255,.14);
-    -webkit-backdrop-filter:blur(18px) saturate(160%);
-            backdrop-filter:blur(18px) saturate(160%);
+    z-index:10;
+    width:min(92vw, 440px);
+    border-radius:20px;
+    background:rgba(255,255,255,.065);
+    border:1px solid rgba(255,255,255,.13);
+    -webkit-backdrop-filter:blur(22px) saturate(170%);
+            backdrop-filter:blur(22px) saturate(170%);
     box-shadow:
-      0 18px 50px rgba(0,0,0,.38),
-      inset 0 1px 0 rgba(255,255,255,.18);
+      0 24px 60px rgba(0,0,0,.42),
+      0 2px 8px rgba(0,0,0,.25),
+      inset 0 1px 0 rgba(255,255,255,.20);
     overflow:hidden;
-    animation:rise .45s cubic-bezier(.2,.7,.3,1) both;
+    animation: rise .5s cubic-bezier(.2,.7,.3,1) both;
   }
   #card::after{
     content:"";
@@ -66,78 +70,207 @@
 
   #brand{
     position:relative;
-    text-align:center;
-    padding:12px 14px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:12px 16px;
     border-bottom:1px solid rgba(255,255,255,.10);
-    background:rgba(0,0,0,.15);
+    background:rgba(0,0,0,.16);
+    z-index:1;
   }
   #brand img{
-    width:28px; height:28px; margin-right:8px;
-    border-radius:50%; vertical-align:middle;
+    width:28px; height:28px;
+    border-radius:50%;
+    flex:0 0 auto;
   }
   #brand b{
-    font-size:15px; font-weight:700; letter-spacing:.14em;
-    color:#e6ebf2; vertical-align:middle;
+    font-size:15px;
+    font-weight:700;
+    letter-spacing:.10em;
+    color:#e6ebf2;
+    display:flex;
+    align-items:center;
+    gap:9px;
+    flex:1;
+    min-width:0;
   }
+  #brand .dot{
+    width:9px; height:9px;
+    border-radius:50%;
+    background:#ffd894;
+    box-shadow:0 0 12px #ffd894;
+    animation: pulse 1.5s ease-in-out infinite;
+    flex:0 0 auto;
+  }
+  .brand-run  { display:inline; }
+  .brand-done { display:none;  color:#7ff0b8; }
+  .brand-fail { display:none;  color:#ff9d9d; }
+  body.done #brand .dot{ background:#7ff0b8; box-shadow:0 0 12px #7ff0b8; animation:none; }
+  body.fail #brand .dot{ background:#ff9d9d; box-shadow:0 0 12px #ff9d9d; animation:none; }
+  body.done .brand-run  { display:none; }
+  body.done .brand-done { display:inline; }
+  body.fail .brand-run  { display:none; }
+  body.fail .brand-fail { display:inline; }
 
-  #wrap{
+  /* ---- status circle (spinner / check / X) ---- */
+  #status{
     position:relative;
-    padding:18px 20px;
-    z-index:1;
+    width:64px;
+    height:64px;
+    margin:30px auto 22px;
+  }
+  #spinner{
+    position:absolute;
+    top:0; left:0;
+    width:64px; height:64px;
+    border-radius:50%;
+    border:3px solid rgba(255,255,255,.10);
+    border-top-color:#7ff0b8;
+    border-right-color:rgba(127,240,184,.55);
+    animation: spin .9s linear infinite;
+    filter: drop-shadow(0 0 14px rgba(127,240,184,.35));
+  }
+  .status-svg{
+    display:none;
+    position:absolute;
+    top:0; left:0;
+    width:64px;
+    height:64px;
+  }
+  .status-check{ color:#7ff0b8; filter: drop-shadow(0 0 14px rgba(127,240,184,.55)); }
+  .status-fail { color:#ff9d9d; filter: drop-shadow(0 0 14px rgba(255,120,120,.55)); }
+
+  body.done #spinner{ display:none; }
+  body.done .status-check{ display:block; }
+  body.fail #spinner{ display:none; }
+  body.fail .status-fail{ display:block; }
+
+  #msg{
+    display:block;
+    text-align:center;
+    padding:0 24px 26px;
+    font-size:15px;
+    line-height:1.4;
+  }
+  #msg .msg-run  { display:block; color:rgba(238,242,247,.70); }
+  #msg .msg-done { display:none;  color:#7ff0b8; text-shadow:0 0 24px rgba(127,240,184,.45); }
+  #msg .msg-fail { display:none;  color:#ff9d9d; text-shadow:0 0 24px rgba(255,120,120,.45); }
+
+  body.done #msg .msg-run { display:none; }
+  body.done #msg .msg-done{ display:block; }
+  body.fail #msg .msg-run { display:none; }
+  body.fail #msg .msg-fail{ display:block; }
+
+  /* ---- log view (only when jb.js sets body.log via ?log=1) ---- */
+  #wrap{ display:none; position:relative; z-index:1; }
+
+  body.log{ align-items:flex-start; }
+  body.log #status,
+  body.log #msg{ display:none !important; }
+  body.log #card{
+    width:min(94vw, 760px);
+    display:flex;
+    flex-direction:column;
+    max-height: calc(100vh - 48px);
+    margin:0 auto;
+  }
+  body.log #wrap{
+    display:flex;
+    flex-direction:column;
+    flex:1;
+    min-height:0;
+    padding:16px 18px;
+    gap:12px;
   }
 
   #state{
-    font-size:20px;
+    display:none;
+    font-size:17px;
     font-weight:650;
     letter-spacing:.01em;
-    margin:0 0 8px;
+    line-height:1.35;
     color:#eef2f7;
-    transition:color .25s ease, text-shadow .25s ease;
   }
-  #state.ok  { color:#7ff0b8; text-shadow:0 0 20px rgba(110,231,168,.35); }
-  #state.warn{ color:#ffd894; text-shadow:0 0 20px rgba(250,204,120,.30); }
-  #state.bad { color:#ff9d9d; text-shadow:0 0 20px rgba(255,120,120,.30); }
-
-  #det{
-    font-size:13px;
-    color:rgba(238,242,247,.62);
+  body.log #state{ display:block; }
+  #state.ok  { color:#7ff0b8; }
+  #state.warn{ color:#ffd894; }
+  #state.bad { color:#ff9d9d; }
+  #state::before{
+    content:"";
+    display:inline-block;
+    width:8px; height:8px;
+    border-radius:50%;
+    background:currentColor;
+    margin-right:10px;
+    vertical-align:middle;
+    box-shadow:0 0 12px currentColor;
+    animation: pulse 1.6s ease-in-out infinite;
   }
-  #det b{ color:#fff; font-weight:600; }
 
-  #cache{
-    margin-top:14px;
-    padding-top:12px;
-    min-height:15px;
-    font-size:12px;
-    letter-spacing:.01em;
-    color:rgba(238,242,247,.42);
-    border-top:1px solid rgba(255,255,255,.09);
-    transition:color .25s ease;
+  #out{
+    flex:1;
+    min-height:0;
+    overflow-y:auto;
+    white-space:pre-wrap;
+    word-break:break-word;
+    font:12px/1.55 ui-monospace,"SF Mono",Consolas,"Liberation Mono",monospace;
+    padding:14px 16px;
+    border-radius:12px;
+    background:rgba(6,8,12,.42);
+    border:1px solid rgba(255,255,255,.07);
+    color:rgba(238,242,247,.88);
+    scrollbar-width:thin;
+    scrollbar-color: rgba(255,255,255,.22) transparent;
+    overscroll-behavior:contain;
   }
-  #cache.cacheok{ color:#7ff0b8; }
 
-  #prompt{
-    margin-top:14px;
-    padding-top:12px;
-    min-height:15px;
+  /* ---- full-screen success video (plays once, never loops) ---- */
+  #success-video{
+    position:fixed;
+    top:0; left:0;
+    width:100vw;
+    height:100vh;
+    object-fit:cover;
+    background:#000;
+    z-index:2147483647;
+    display:none;
+    pointer-events:none;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  body.video-active #success-video{
+    display:block;
+    pointer-events:auto;
+  }
+  /* Card gets hidden only when the video is ACTUALLY rendering.
+     If the video fails, body.video-active never fires and the
+     checkmark stays visible as a fallback. */
+  body.video-active #card{ display:none !important; }
+
+  /* "Tap for sound" pill */
+  #sound-hint{
+    position:fixed;
+    bottom:calc(24px + env(safe-area-inset-bottom));
+    left:50%;
+    transform: translateX(-50%);
+    padding:10px 18px;
+    border-radius:999px;
+    background:rgba(0,0,0,.68);
+    color:#fff;
     font-size:13px;
     letter-spacing:.02em;
-    color:#ffd894;
-    border-top:1px solid rgba(255,255,255,.09);
+    z-index:2147483647;
     display:none;
+    pointer-events:none;
+    -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(8px);
+    box-shadow: 0 4px 16px rgba(0,0,0,.4);
   }
-  #prompt.show{ display:block; animation: pulse 1.6s ease-in-out infinite; }
+  body.video-muted #sound-hint{ display:block; animation: pulse 1.6s ease-in-out infinite; }
 
-  .ok   { color:#7ff0b8; }
-  .bad  { color:#ff9d9d; }
-  .warn { color:#ffd894; }
-
-  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-    #card{ background:rgba(16,20,26,.78); }
-  }
-
+  @keyframes spin{ to { transform: rotate(360deg); } }
   @keyframes rise{
-    from{ opacity:0; transform:translateY(10px) scale(.985); }
+    from{ opacity:0; transform:translateY(12px) scale(.98); }
     to  { opacity:1; transform:none; }
   }
   @keyframes pulse{
@@ -145,163 +278,225 @@
     50%    { opacity:1; }
   }
 
+  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+    #card{ background:rgba(14,17,22,.78); }
+  }
   @media (prefers-reduced-motion:reduce){
-    #card{ animation:none; }
-    #prompt.show{ animation:none; }
+    #card, #spinner, #brand .dot, #state::before{ animation:none; }
+    body.video-muted #sound-hint{ animation:none; }
   }
 </style>
 </head>
 <body>
-<div id="card">
-  <div id="brand">
-    <img src="icon/jb.png" alt="" width="28" height="28"><b>RawBreaking 13.52</b>
-  </div>
-  <div id="wrap">
-    <div id="state">detecting firmware...</div>
-    <div id="det"></div>
-    <div id="cache"></div>
-    <div id="prompt"></div>
-  </div>
-</div>
+  <main id="card">
+    <div id="brand">
+      <img src="icon/jb.png" alt="" width="28" height="28">
+      <b>
+        <span class="dot"></span>
+        <span class="brand-run">Jailbreaking…</span>
+        <span class="brand-done">Jailbreak complete</span>
+        <span class="brand-fail">Jailbreak failed</span>
+      </b>
+    </div>
 
-<script>
-(function () {
-    var stateEl  = document.getElementById("state");
-    var detEl    = document.getElementById("det");
-    var cacheEl  = document.getElementById("cache");
-    var promptEl = document.getElementById("prompt");
+    <div id="status">
+      <div id="spinner"></div>
+      <svg class="status-svg status-check" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="14.5" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M9 16.6 L14 21.4 L23 11.6" fill="none" stroke="currentColor"
+              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <svg class="status-svg status-fail" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="14.5" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M11 11 L21 21 M21 11 L11 21" fill="none" stroke="currentColor"
+              stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+    </div>
 
-    function setState(t, c)  { stateEl.textContent = t; stateEl.className = c || ""; }
-    function setCache(t, ok) { cacheEl.textContent = t; cacheEl.className = ok ? "cacheok" : ""; }
-    function setPrompt(t)    {
-        if (t) { promptEl.textContent = t; promptEl.classList.add("show"); }
-        else   { promptEl.textContent = ""; promptEl.classList.remove("show"); }
-    }
+    <div id="msg">
+      <div class="msg-run">Do not close this page</div>
+      <div class="msg-done">Restart your console (Do Not ReRun!)</div>
+      <div class="msg-fail">Restart your console and try again</div>
+    </div>
 
-    var params = new URLSearchParams(location.search);
+    <div id="wrap">
+      <div id="state"></div>
+      <div id="out"></div>
+    </div>
+  </main>
 
-    // Firmwares this build has a MEASURED kernel table for. jb.js still runs its
-    // own kernel-table-present gate, so this is UX only -- an unlisted firmware
-    // can still be launched with a tap. KEEP IN SYNC with ps4_offsets.js: add a
-    // fwnum here in the SAME commit that fills that firmware's kernel RVAs.
-    // The PS4 reports its minor as two hex digits in the UA (13.52 -> minor 0x52).
-    var SUPPORTED = { 1302: 1, 1304: 1, 1350: 1, 1352: 1 }; // all measured on hardware
+  <video id="success-video"
+         preload="auto"
+         playsinline
+         webkit-playsinline
+         x5-playsinline
+         disablepictureinpicture
+         disableremoteplayback
+         controlslist="nodownload nofullscreen noremoteplayback">
+    <source src="media/unshackled.mp4" type="video/mp4">
+  </video>
 
-    var key = null, fwnum = null;
-    var m = /PlayStation\s+4[\/ ](\d+)\.(\d+)/.exec(navigator.userAgent);
-    if (m) {
-        var ms = parseInt(m[2], 16).toString(16);
-        if (ms.length < 2) ms = "0" + ms;
-        key = m[1] + "." + ms;
-        fwnum = parseInt(m[1], 10) * 100 + parseInt(ms, 10);
-    }
+  <div id="sound-hint">Tap for sound</div>
 
-    var forced = params.get("force") === "1";
-    var supported = forced || (fwnum !== null && SUPPORTED[fwnum] === 1);
-    detEl.innerHTML = "firmware <b>" + (key || "unknown") + "</b>"
-        + (supported ? " &middot; <b>supported</b>"
-                     : " &middot; not in this build's kernel table");
+  <script>
+    (function () {
+      var STATS_KEY  = "ps4-jb-stats-v1";
+      var video      = document.getElementById("success-video");
+      var outEl      = document.getElementById("out");
 
-    var target = "jb.html" + location.search;
+      var started    = false;   // has body.video-active been applied
+      var playing    = false;   // is the video currently rendering
+      var finished   = false;   // has the video ended
+      var counted    = false;   // have we already bumped the counter
+      var lastPlay   = 0;
 
-    // ---- One and only one launch path. Nothing navigates without an
-    //      explicit press. There is also a short arming delay so a stray
-    //      click / keydown that the PS4 browser fires right after load
-    //      cannot auto-launch the exploit.
-    var launched = false;
-    var armed = false;
-    var ARM_DELAY_MS = 700;
+      function hasClass(c){ try { return document.body.classList.contains(c); } catch (e) { return false; } }
+      function addClass(c){ try { document.body.classList.add(c); } catch (e) {} }
+      function removeClass(c){ try { document.body.classList.remove(c); } catch (e) {} }
 
-    function waitForTap(msg, action) {
-        setState(msg, "warn");
-        setPrompt("Press X or tap the screen to start");
+      // ---- counter (localStorage) ----
+      function bumpStats(ok) {
+        if (counted) return;
+        counted = true;
+        try {
+          var raw = localStorage.getItem(STATS_KEY) || "{}";
+          var s = JSON.parse(raw);
+          if (!s || typeof s !== "object") s = {};
+          if (ok) s.success = (s.success | 0) + 1;
+          else    s.failed  = (s.failed  | 0) + 1;
+          localStorage.setItem(STATS_KEY, JSON.stringify(s));
+        } catch (e) {}
+      }
 
-        armed = false;
-        setTimeout(function () { armed = true; }, ARM_DELAY_MS);
+      // ---- sound helpers ----
+      function showSoundHint(){ addClass("video-muted"); }
+      function hideSoundHint(){ removeClass("video-muted"); }
+      function tryUnmute() {
+        try { video.muted = false; video.volume = 1.0; } catch (e) {}
+        setTimeout(function () {
+          if (video.muted) showSoundHint();
+          else hideSoundHint();
+        }, 300);
+      }
 
-        function fire(ev) {
-            if (!armed) {
-                // Swallow the premature event without acting on it.
-                return;
-            }
-            if (launched) return;
-            launched = true;
+      // ---- play (once, with autoplay-safe audio fallback) ----
+      function tryPlay() {
+        if (finished) return;
+        lastPlay = Date.now();
+        try { video.muted = false; video.volume = 1.0; } catch (e) {}
 
-            window.removeEventListener("click", fire, true);
-            window.removeEventListener("keydown", fire, true);
-            window.removeEventListener("touchend", fire, true);
-            window.removeEventListener("pointerup", fire, true);
-
-            setPrompt("");
-            action();
+        var p;
+        try { p = video.play(); }
+        catch (e) {
+          try { video.muted = true; video.play(); showSoundHint(); } catch (e2) {}
+          return;
         }
+        if (p && typeof p.then === "function") {
+          p.then(function () { hideSoundHint(); })
+           .catch(function () {
+              try { video.muted = true; } catch (e) {}
+              var q;
+              try { q = video.play(); } catch (e) { showSoundHint(); return; }
+              if (q && typeof q.then === "function") {
+                q.then(function () { tryUnmute(); })
+                 .catch(function () { showSoundHint(); });
+              } else { showSoundHint(); }
+           });
+        }
+      }
 
-        // Capture phase so nothing can stopPropagation ahead of us.
-        window.addEventListener("click",     fire, true);
-        window.addEventListener("keydown",   fire, true);
-        window.addEventListener("touchend",  fire, true);
-        window.addEventListener("pointerup", fire, true);
-    }
+      // ---- video events ----
+      video.addEventListener("playing", function () {
+        if (!playing) {
+          playing = true;
+          // Now that a frame is actually on screen, reveal the video
+          // and hide the card.
+          addClass("video-active");
+        }
+        if (video.muted) tryUnmute();
+        else hideSoundHint();
+      });
 
-    function go() {
-        setState("loading jailbreak...", "warn");
-        setPrompt("");
-        location.replace(target);
-    }
+      video.addEventListener("ended", function () {
+        finished = true;
+        // Hold the last frame; never replay.
+        try { video.pause(); } catch (e) {}
+      });
 
-    // Unsupported firmware: still one-tap launchable, so a UA quirk can never
-    // lock the real console out. No auto-launch here either.
-    if (!supported) {
-        setState("UNSUPPORTED FIRMWARE", "bad");
-        waitForTap("UNSUPPORTED (" + (key || "unknown") + ")", go);
-        return;
-    }
+      // Any tap while the video is playing unmutes it if it's muted.
+      document.addEventListener("click", function () {
+        if (!playing || finished) return;
+        if (video.muted) tryUnmute();
+      }, true);
 
-    // Supported firmware: warm the cache in the background, but nothing
-    // navigates on its own. The cache events only update the status line.
-    var ac = window.applicationCache;
-    if (!ac || !document.documentElement.hasAttribute("manifest")) {
-        waitForTap("READY", go);
-    } else if (!navigator.onLine) {
-        setCache("offline -- from cache", true);
-        waitForTap("READY (offline)", go);
-    } else if (ac.status === ac.IDLE) {
-        setCache("cached", true);
-        waitForTap("READY", go);
-    } else if (ac.status === ac.UPDATEREADY) {
-        try { ac.swapCache(); } catch (e) {}
-        setCache("update downloaded", true);
-        waitForTap("UPDATE READY", function () { location.reload(); });
-    } else {
-        setCache("checking cache...");
-        ac.addEventListener("downloading",
-            function () { setCache("caching for offline (first run)..."); }, false);
-        ac.addEventListener("progress", function (e) {
-            if (e && e.total)
-                setCache("caching " + Math.round((e.loaded / e.total) * 100) + "%");
-        }, false);
-        ac.addEventListener("cached", function () {
-            setCache("cached for offline use", true);
-        }, false);
-        ac.addEventListener("updateready", function () {
-            try { ac.swapCache(); } catch (e) {}
-            setCache("update downloaded", true);
-        }, false);
-        ac.addEventListener("noupdate", function () {
-            setCache("cached -- offline ready", true);
-        }, false);
-        ac.addEventListener("error", function () {
-            setCache("cache unavailable");
-        }, false);
-        ac.addEventListener("obsolete", function () {
-            setCache("cache obsolete");
-        }, false);
+      // Preload early so the first frame is ready when we need it.
+      try { video.preload = "auto"; video.load(); } catch (e) {}
 
-        // Regardless of how the cache events land, the page sits on the
-        // prompt and waits for the press.
-        waitForTap("READY", go);
-    }
-})();
-</script>
+      function start() {
+        if (started) return;
+        started = true;
+        try { video.currentTime = 0; } catch (e) {}
+        tryPlay();
+      }
+
+      // ---- detect success / failure, count once, start video on success ----
+      function evaluate() {
+        if (hasClass("done")) {
+          bumpStats(true);
+          start();
+          return;
+        }
+        if (hasClass("fail")) {
+          bumpStats(false);
+          return;
+        }
+        // ?log=1 path: jb.js never touches body.className, so read the log.
+        if (outEl) {
+          var txt = outEl.textContent || "";
+          if (/PROOF-SUMMARY-FINAL/.test(txt)) {
+            if (/INCOMPLETE/.test(txt)) {
+              bumpStats(false);
+            } else if (/PAYLOAD-RUNNING/.test(txt) || /PROOF-OK\s+PAYLOAD-RUNNING/.test(txt)) {
+              bumpStats(true);
+              // Don't play the video in log mode -- user is reading logs.
+              if (!hasClass("log")) start();
+            }
+          }
+        }
+      }
+
+      try {
+        new MutationObserver(evaluate).observe(document.body, {
+          attributes: true, attributeFilter: ["class"]
+        });
+      } catch (e) {}
+      if (outEl) {
+        try {
+          new MutationObserver(evaluate).observe(outEl, {
+            childList: true, subtree: true, characterData: true
+          });
+        } catch (e) {}
+      }
+      evaluate();
+
+      // Watchdog: retry play ONLY if the video hasn't finished yet AND we
+      // haven't started playing. Once ended, we never touch it again.
+      setInterval(function () {
+        evaluate();
+        if (finished || video.ended) { finished = true; return; }
+        if (hasClass("done") && !playing && Date.now() - lastPlay > 3000) {
+          tryPlay();
+        }
+      }, 4000);
+
+      video.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        return false;
+      });
+    })();
+  </script>
+  <script type="module">
+    import "./jb.js?v=10";
+  </script>
 </body>
 </html>
