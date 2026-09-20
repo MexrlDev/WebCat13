@@ -295,15 +295,48 @@ let allDone = false,
     state("running the primitive...", "warn");
     await new Promise((r) => setTimeout(r, 0));
 
+    // The primitive is the single most failure-prone stage of the whole run:
+    // every attempt is a fresh heap groom + addrof + witness read, and any
+    // one of them can miss the reclaim. 6 (the old ceiling) is too tight on
+    // a loaded console -- 24 gives the retry loop room to ride out a bad
+    // minute, and is still bounded so we never spin forever. Tune with
+    // ?attempts=N if you need to trade wall-clock for a tighter/looser budget.
+    const PRIM_ATTEMPTS = (function () {
+      const q = params.get("attempts");
+      const n = q ? parseInt(q, 10) : 24;
+      if (!Number.isFinite(n) || n < 1) return 24;
+      return Math.min(128, n);
+    })();
+    mark(
+      "PRIM-CFG",
+      "maxAttempts=" + PRIM_ATTEMPTS + " (override with ?attempts=N)",
+    );
+
     const PRIMITIVE_LOUD = /FAIL|ERROR|THREW|RETRY|ABORT|PASS/i;
-    const carrier = await establishPrimitive({
-      maxAttempts: 6,
-      onEvent: (t, d, a) =>
-        (PRIMITIVE_LOUD.test(t) ? mark : trace)(
-          t,
-          (a != null ? "[" + a + "] " : "") + (d || ""),
-        ),
-    });
+    let carrier;
+    try {
+      carrier = await establishPrimitive({
+        maxAttempts: PRIM_ATTEMPTS,
+        onEvent: (t, d, a) =>
+          (PRIMITIVE_LOUD.test(t) ? mark : trace)(
+            t,
+            (a != null ? "[" + a + "] " : "") + (d || ""),
+          ),
+      });
+    } catch (primErr) {
+      mark(
+        "PRIMITIVE-THREW",
+        "pass=" +
+          passCount +
+          " fail=" +
+          failCount +
+          " after " +
+          PRIM_ATTEMPTS +
+          " attempts: " +
+          (primErr && primErr.message ? primErr.message : String(primErr)),
+      );
+      throw primErr;
+    }
     installWindowP(carrier, { promote: false });
     if (!window.p) throw new Error("window.p was not installed");
     p = window.p;
