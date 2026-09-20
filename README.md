@@ -3,8 +3,7 @@
 
 ---
 ## Source code & Credits
-original by [Raw-Game](https://github.com/raw13g/raw13g.github.io)
-original website is https://raw13g.github.io
-Ps4Hen [source code](https://github.com/MexrlDev/PS4-Hen) & Plugins edited by me
+original by [Raw-Game](raw13g.github.io)
+[source code](https://github.com/raw13g/raw13g.github.io)
 
 ---
