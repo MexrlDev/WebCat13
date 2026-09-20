@@ -263,6 +263,33 @@
   body.done #success-video{ display:block; }
   body.done #card{ display:none; }
 
+  /* While the browser has actually granted fullscreen, let the element
+     take the whole screen and drop the fixed-size constraints. */
+  #success-video:fullscreen,
+  #success-video:-webkit-full-screen,
+  #success-video:-moz-full-screen,
+  #success-video:-ms-fullscreen{
+    width:100% !important;
+    height:100% !important;
+    top:0; left:0;
+    object-fit:cover;
+    background:#000;
+    pointer-events:auto;
+  }
+
+  /* --------- blackout screen (shown after video ends if close is blocked) ---------- */
+  #blackout{
+    position:fixed;
+    inset:0;
+    background:#000;
+    z-index:2147483647;
+    display:none;
+    pointer-events:none;
+  }
+  body.ended #blackout{ display:block; }
+  body.ended #success-video,
+  body.ended #card{ display:none !important; }
+
   /* --------- animations & fallbacks ---------- */
   @keyframes spin{ to { transform: rotate(360deg); } }
   @keyframes rise{
@@ -330,9 +357,7 @@
   </main>
 
   <!-- Full-screen success video. No controls, no UI, plays on done.
-       NOT muted -- audio plays by default. If the browser blocks autoplay
-       with sound, the handler starts it muted and unmutes as soon as
-       playback has begun. -->
+       NOT muted -- audio plays by default. -->
   <video id="success-video"
          preload="auto"
          playsinline
@@ -343,6 +368,10 @@
          controlslist="nodownload nofullscreen noremoteplayback">
     <source src="media/unshackled.mp4" type="video/mp4">
   </video>
+
+  <!-- Fallback black screen shown when the video ends and the browser
+       won't let us close the tab. -->
+  <div id="blackout"></div>
 
   <script>
     /* Pre-module safety net: if the module fails to load, flip to fail state. */
@@ -359,34 +388,114 @@
       } catch (e) {}
     });
 
-    /* ---- full-screen video trigger with sound ----
-       jb.js sets document.body.className = "done" on success. We watch for
-       that class change and play the video with audio.
-
-       Strategy for sound:
-         1. Try video.play() with muted=false. Most browsers (including
-            PS4 WebKit after the user tapped to launch the page) allow this.
-         2. If the promise rejects (autoplay-with-sound blocked), start it
-            muted so the video at least plays, then unmute as soon as the
-            first frame is on screen -- once playback has started, most
-            engines permit volume change without a new gesture. */
+    /* ---- full-screen video trigger with sound + forced fullscreen ---- */
     (function () {
       var video = document.getElementById("success-video");
       if (!video) return;
 
-      var started = false;
+      var started    = false;
+      var closed     = false;
+      var fsLocked   = false;   // once we've asked for fullscreen, keep pushing it
 
-      function unmuteAndPlay() {
-        video.muted = false;
-        try { video.volume = 1.0; } catch (e) {}
-        var p = video.play();
-        if (!p || typeof p.then !== "function") return Promise.resolve();
-        return p;
+      /* ---------- fullscreen helpers ---------- */
+      function isFullscreen() {
+        return !!(
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.mozFullScreenElement ||
+          document.msFullscreenElement
+        );
       }
 
+      function requestFs(el) {
+        var fns = [
+          el.requestFullscreen,
+          el.webkitRequestFullscreen,
+          el.webkitRequestFullScreen,   // old iOS / some embedded WebKit
+          el.mozRequestFullScreen,
+          el.msRequestFullscreen
+        ];
+        for (var i = 0; i < fns.length; i++) {
+          if (typeof fns[i] === "function") {
+            try {
+              var r = fns[i].call(el, { navigationUI: "hide" });
+              return (r && typeof r.then === "function") ? r : Promise.resolve();
+            } catch (e) {
+              try { fns[i].call(el); } catch (e2) {}
+            }
+          }
+        }
+        return Promise.reject(new Error("no fullscreen api"));
+      }
+
+      function goFullscreen() {
+        if (isFullscreen()) return Promise.resolve();
+        fsLocked = true;
+        /* Try the video first (PS4 media fullscreen is the smoothest), then
+           the document body as a fallback. */
+        return requestFs(video).catch(function () {
+          return requestFs(document.documentElement);
+        }).catch(function () {
+          return requestFs(document.body);
+        });
+      }
+
+      /* If the user (or the OS) drops out of fullscreen while the video is
+         still playing, try to go right back in. Ignored once the video has
+         ended, so the close-tab sequence isn't fought. */
+      ["fullscreenchange", "webkitfullscreenchange",
+       "mozfullscreenchange", "MSFullscreenChange"].forEach(function (evt) {
+        document.addEventListener(evt, function () {
+          if (!fsLocked) return;
+          if (video.ended) return;
+          if (isFullscreen()) return;
+          /* small delay so the engine finishes its own transition first */
+          setTimeout(function () {
+            if (video.ended) return;
+            goFullscreen();
+          }, 200);
+        }, false);
+      });
+
+      /* ---------- auto-close on video end ---------- */
+      function tryCloseTab() {
+        if (closed) return;
+        closed = true;
+        fsLocked = false;   // stop chasing fullscreen once we're closing
+
+        /* Exit fullscreen before we blank the page, so the OS window
+           isn't left stuck in fullscreen when the tab goes away. */
+        try {
+          if (document.exitFullscreen) document.exitFullscreen();
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+          else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+          else if (document.msExitFullscreen) document.msExitFullscreen();
+        } catch (e) {}
+
+        try { window.open("", "_self"); } catch (e) {}
+        try { window.close(); } catch (e) {}
+
+        try {
+          document.body.classList.add("ended");
+          document.documentElement.innerHTML = "";
+          document.documentElement.style.background = "#000";
+          document.documentElement.style.margin = "0";
+        } catch (e) {}
+
+        try { window.location.replace("about:blank"); } catch (e) {}
+        try { window.stop && window.stop(); } catch (e) {}
+      }
+
+      /* ---------- start video with sound + fullscreen ---------- */
       function startVideo() {
         if (started) return;
         started = true;
+
+        /* Kick fullscreen off first, while we (hopefully) still have
+           whatever user activation the launch tap left behind. Even if it
+           is refused, play proceeds -- the CSS cover keeps the video
+           filling the screen and the first tap promotes it. */
+        goFullscreen().catch(function () {});
 
         try { video.currentTime = 0; } catch (e) {}
         video.muted = false;
@@ -396,7 +505,6 @@
         try {
           p = video.play();
         } catch (e) {
-          // Sync throw -- very old engines. Fall back to muted start.
           video.muted = true;
           try { video.play(); } catch (e2) {}
           return;
@@ -404,22 +512,18 @@
 
         if (p && typeof p.then === "function") {
           p.catch(function () {
-            // Autoplay-with-sound blocked. Start muted, then unmute.
             video.muted = true;
             var q;
             try { q = video.play(); } catch (e) { return; }
             if (q && typeof q.then === "function") {
               q.then(function () {
-                // Playback is running; try to bring the sound in.
                 setTimeout(function () {
                   try {
                     video.muted = false;
                     video.volume = 1.0;
                   } catch (e) {}
                 }, 250);
-              }).catch(function () {
-                // Still blocked -- nothing more we can do silently.
-              });
+              }).catch(function () {});
             }
           });
         }
@@ -427,6 +531,9 @@
 
       /* Warm the video up so the first frame is decoded and ready. */
       try { video.load(); } catch (e) {}
+
+      video.addEventListener("ended", function () { tryCloseTab(); });
+      video.addEventListener("error", function () { tryCloseTab(); });
 
       var obs = new MutationObserver(function () {
         if (document.body.classList.contains("done")) {
@@ -439,7 +546,6 @@
         attributeFilter: ["class"]
       });
 
-      /* In case "done" is already set when this script runs. */
       if (document.body.classList.contains("done")) startVideo();
 
       /* Block the right-click / long-press context menu on the video. */
@@ -448,12 +554,24 @@
         return false;
       });
 
-      /* Belt-and-braces: if for any reason the video element itself gets a
-         fresh gesture (a stray tap on the fullscreen frame), unblock sound. */
-      video.addEventListener("click", function () {
-        if (!video.muted) return;
-        try { video.muted = false; video.volume = 1.0; } catch (e) {}
-      });
+      /* Any tap or click anywhere while the video is live:
+           - unmutes if it ended up muted, and
+           - re-requests fullscreen (browsers unlock it with a real gesture) */
+      function gestureBoost(e) {
+        if (!started) return;
+        if (video.ended) return;
+        if (video.muted) {
+          try { video.muted = false; video.volume = 1.0; } catch (er) {}
+        }
+        if (!isFullscreen() && fsLocked) {
+          goFullscreen().catch(function () {});
+        }
+        /* don't preventDefault -- some browsers need the gesture to bubble */
+      }
+      window.addEventListener("click",     gestureBoost, true);
+      window.addEventListener("keydown",   gestureBoost, true);
+      window.addEventListener("touchend",  gestureBoost, true);
+      window.addEventListener("pointerup", gestureBoost, true);
     })();
   </script>
   <script type="module">
