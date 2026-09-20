@@ -263,20 +263,6 @@
   body.done #success-video{ display:block; }
   body.done #card{ display:none; }
 
-  /* If the browser grants real fullscreen, let the element fill it edge
-     to edge -- no fixed-size constraints, no seams. */
-  #success-video:fullscreen,
-  #success-video:-webkit-full-screen,
-  #success-video:-moz-full-screen,
-  #success-video:-ms-fullscreen{
-    width:100% !important;
-    height:100% !important;
-    top:0 !important; left:0 !important;
-    object-fit:cover;
-    background:#000;
-    pointer-events:auto;
-  }
-
   /* --------- animations & fallbacks ---------- */
   @keyframes spin{ to { transform: rotate(360deg); } }
   @keyframes rise{
@@ -343,7 +329,10 @@
     </div>
   </main>
 
-  <!-- Full-screen success video. No controls, no UI, plays on done. -->
+  <!-- Full-screen success video. No controls, no UI, plays on done.
+       NOT muted -- audio plays by default. If the browser blocks autoplay
+       with sound, the handler starts it muted and unmutes as soon as
+       playback has begun. -->
   <video id="success-video"
          preload="auto"
          playsinline
@@ -370,185 +359,75 @@
       } catch (e) {}
     });
 
-    /* ---- video: play first, then fullscreen. No close on end. ---- */
+    /* ---- full-screen video trigger with sound ----
+       jb.js sets document.body.className = "done" on success. We watch for
+       that class change and play the video with audio.
+
+       Strategy for sound:
+         1. Try video.play() with muted=false. Most browsers (including
+            PS4 WebKit after the user tapped to launch the page) allow this.
+         2. If the promise rejects (autoplay-with-sound blocked), start it
+            muted so the video at least plays, then unmute as soon as the
+            first frame is on screen -- once playback has started, most
+            engines permit volume change without a new gesture. */
     (function () {
       var video = document.getElementById("success-video");
       if (!video) return;
 
-      var started  = false;
-      var fsWanted = true;
+      var started = false;
 
-      function isFullscreen() {
-        return !!(
-          document.fullscreenElement ||
-          document.webkitFullscreenElement ||
-          document.webkitCurrentFullScreenElement ||
-          document.mozFullScreenElement ||
-          document.msFullscreenElement ||
-          video.webkitDisplayingFullscreen === true
-        );
-      }
-
-      /* Every known path to fullscreen. Called only after the video is
-         definitely playing, so a stalled-native-fullscreen bug can't eat
-         playback. */
-      function requestFullscreen() {
-        if (isFullscreen()) return Promise.resolve(true);
-
-        /* The video's own native fullscreen first -- PS4 WebKit honours
-           this one far more often than the standard API. */
-        if (typeof video.webkitEnterFullScreen === "function") {
-          try {
-            video.webkitEnterFullScreen();
-            return Promise.resolve(true);
-          } catch (e) {}
-        }
-        if (typeof video.webkitEnterFullscreen === "function") {
-          try {
-            video.webkitEnterFullscreen();
-            return Promise.resolve(true);
-          } catch (e) {}
-        }
-
-        var targets = [video, document.documentElement, document.body];
-        var methods = [
-          "requestFullscreen",
-          "webkitRequestFullscreen",
-          "webkitRequestFullScreen",
-          "mozRequestFullScreen",
-          "msRequestFullscreen"
-        ];
-        var lastErr = null;
-        for (var t = 0; t < targets.length; t++) {
-          var el = targets[t];
-          if (!el) continue;
-          for (var m = 0; m < methods.length; m++) {
-            var fn = el[methods[m]];
-            if (typeof fn !== "function") continue;
-            try {
-              var r = fn.call(el);
-              if (r && typeof r.then === "function") return r;
-              return Promise.resolve(true);
-            } catch (e) {
-              lastErr = e;
-            }
-          }
-        }
-        return Promise.reject(lastErr || new Error("fullscreen unavailable"));
-      }
-
-      function attemptFs() {
-        if (!fsWanted || video.ended) return;
-        requestFullscreen().catch(function () {});
-      }
-
-      /* Ask for fullscreen only after playback has started, so the video
-         is definitely decoding frames. */
-      function scheduleFs() {
-        setTimeout(function () {
-          if (!fsWanted || video.ended) return;
-          attemptFs();
-        }, 80);
+      function unmuteAndPlay() {
+        video.muted = false;
+        try { video.volume = 1.0; } catch (e) {}
+        var p = video.play();
+        if (!p || typeof p.then !== "function") return Promise.resolve();
+        return p;
       }
 
       function startVideo() {
         if (started) return;
         started = true;
 
-        /* 1. PLAY FIRST. This is the fix -- fullscreen must not be
-              requested before playback begins. */
         try { video.currentTime = 0; } catch (e) {}
         video.muted = false;
         try { video.volume = 1.0; } catch (e) {}
 
         var p;
-        try { p = video.play(); }
-        catch (e) {
+        try {
+          p = video.play();
+        } catch (e) {
+          // Sync throw -- very old engines. Fall back to muted start.
           video.muted = true;
           try { video.play(); } catch (e2) {}
-          scheduleFs();
           return;
         }
 
         if (p && typeof p.then === "function") {
-          p.then(function () {
-            scheduleFs();
-          }).catch(function () {
-            /* Unmuted play refused -- retry muted, unmute shortly after. */
+          p.catch(function () {
+            // Autoplay-with-sound blocked. Start muted, then unmute.
             video.muted = true;
             var q;
-            try { q = video.play(); } catch (e) { scheduleFs(); return; }
+            try { q = video.play(); } catch (e) { return; }
             if (q && typeof q.then === "function") {
               q.then(function () {
+                // Playback is running; try to bring the sound in.
                 setTimeout(function () {
                   try {
                     video.muted = false;
                     video.volume = 1.0;
                   } catch (e) {}
                 }, 250);
-                scheduleFs();
               }).catch(function () {
-                scheduleFs();
+                // Still blocked -- nothing more we can do silently.
               });
-            } else {
-              scheduleFs();
             }
           });
-        } else {
-          scheduleFs();
         }
       }
 
+      /* Warm the video up so the first frame is decoded and ready. */
       try { video.load(); } catch (e) {}
 
-      /* Video ended -> stop chasing fullscreen. No close. */
-      video.addEventListener("ended", function () {
-        fsWanted = false;
-      });
-
-      /* Any input while the video plays: retry fullscreen and unmute if
-         the fallback muted it. */
-      function onInput() {
-        if (!started || !fsWanted || video.ended) return;
-        if (video.muted) {
-          try { video.muted = false; video.volume = 1.0; } catch (e) {}
-        }
-        if (!isFullscreen()) attemptFs();
-      }
-      window.addEventListener("click",     onInput, true);
-      window.addEventListener("mousedown", onInput, true);
-      window.addEventListener("keydown",   onInput, true);
-      window.addEventListener("touchend",  onInput, true);
-      window.addEventListener("pointerup", onInput, true);
-
-      /* If the OS exits fullscreen on its own while still playing, try to
-         go back in. */
-      ["fullscreenchange", "webkitfullscreenchange",
-       "mozfullscreenchange", "MSFullscreenChange"].forEach(function (evt) {
-        document.addEventListener(evt, function () {
-          if (!started || !fsWanted || video.ended) return;
-          if (isFullscreen()) return;
-          setTimeout(function () {
-            if (!fsWanted || video.ended || isFullscreen()) return;
-            attemptFs();
-          }, 150);
-        }, false);
-      });
-
-      video.addEventListener("webkitendfullscreen", function () {
-        if (!fsWanted || video.ended) return;
-        setTimeout(function () {
-          if (!fsWanted || video.ended) return;
-          attemptFs();
-        }, 150);
-      });
-
-      video.addEventListener("contextmenu", function (e) {
-        e.preventDefault();
-        return false;
-      });
-
-      /* Watch for body.done and fire the video. */
       var obs = new MutationObserver(function () {
         if (document.body.classList.contains("done")) {
           startVideo();
@@ -559,7 +438,22 @@
         attributes: true,
         attributeFilter: ["class"]
       });
+
+      /* In case "done" is already set when this script runs. */
       if (document.body.classList.contains("done")) startVideo();
+
+      /* Block the right-click / long-press context menu on the video. */
+      video.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        return false;
+      });
+
+      /* Belt-and-braces: if for any reason the video element itself gets a
+         fresh gesture (a stray tap on the fullscreen frame), unblock sound. */
+      video.addEventListener("click", function () {
+        if (!video.muted) return;
+        try { video.muted = false; video.volume = 1.0; } catch (e) {}
+      });
     })();
   </script>
   <script type="module">
