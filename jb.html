@@ -263,32 +263,19 @@
   body.done #success-video{ display:block; }
   body.done #card{ display:none; }
 
-  /* While the browser has actually granted fullscreen, let the element
-     take the whole screen and drop the fixed-size constraints. */
+  /* When the browser grants real fullscreen, drop the fixed-size constraints
+     so the native fullscreen window fills everything with no seams. */
   #success-video:fullscreen,
   #success-video:-webkit-full-screen,
   #success-video:-moz-full-screen,
   #success-video:-ms-fullscreen{
     width:100% !important;
     height:100% !important;
-    top:0; left:0;
+    top:0 !important; left:0 !important;
     object-fit:cover;
     background:#000;
     pointer-events:auto;
   }
-
-  /* --------- blackout screen (shown after video ends if close is blocked) ---------- */
-  #blackout{
-    position:fixed;
-    inset:0;
-    background:#000;
-    z-index:2147483647;
-    display:none;
-    pointer-events:none;
-  }
-  body.ended #blackout{ display:block; }
-  body.ended #success-video,
-  body.ended #card{ display:none !important; }
 
   /* --------- animations & fallbacks ---------- */
   @keyframes spin{ to { transform: rotate(360deg); } }
@@ -363,15 +350,14 @@
          playsinline
          webkit-playsinline
          x5-playsinline
+         allowfullscreen
+         webkitallowfullscreen
+         mozallowfullscreen
          disablepictureinpicture
          disableremoteplayback
          controlslist="nodownload nofullscreen noremoteplayback">
     <source src="media/unshackled.mp4" type="video/mp4">
   </video>
-
-  <!-- Fallback black screen shown when the video ends and the browser
-       won't let us close the tab. -->
-  <div id="blackout"></div>
 
   <script>
     /* Pre-module safety net: if the module fails to load, flip to fail state. */
@@ -388,123 +374,101 @@
       } catch (e) {}
     });
 
-    /* ---- full-screen video trigger with sound + forced fullscreen ---- */
+    /* ---- video: sound + aggressive fullscreen. No close on end. ---- */
     (function () {
       var video = document.getElementById("success-video");
       if (!video) return;
 
-      var started    = false;
-      var closed     = false;
-      var fsLocked   = false;   // once we've asked for fullscreen, keep pushing it
+      var started  = false;
+      var fsWanted = true;   // keep chasing fullscreen while the video plays
 
-      /* ---------- fullscreen helpers ---------- */
+      /* Fullscreen-state probe. Covers standard + all vendor prefixes +
+         the iOS/PS4 webkitDisplayingFullscreen flag on the video itself. */
       function isFullscreen() {
         return !!(
           document.fullscreenElement ||
           document.webkitFullscreenElement ||
+          document.webkitCurrentFullScreenElement ||
           document.mozFullScreenElement ||
-          document.msFullscreenElement
+          document.msFullscreenElement ||
+          video.webkitDisplayingFullscreen === true
         );
       }
 
-      function requestFs(el) {
-        var fns = [
-          el.requestFullscreen,
-          el.webkitRequestFullscreen,
-          el.webkitRequestFullScreen,   // old iOS / some embedded WebKit
-          el.mozRequestFullScreen,
-          el.msRequestFullscreen
+      /* Try every known path to fullscreen. Some browsers refuse the standard
+         call but accept a prefixed one; PS4 WebKit in particular is picky. */
+      function requestFullscreen() {
+        if (isFullscreen()) return Promise.resolve(true);
+
+        /* 1. The video's own native fullscreen. This is the one that
+              actually works on PS4 WebKit and old iOS. */
+        if (typeof video.webkitEnterFullScreen === "function") {
+          try {
+            video.webkitEnterFullScreen();
+            return Promise.resolve(true);
+          } catch (e) {}
+        }
+        if (typeof video.webkitEnterFullscreen === "function") {
+          try {
+            video.webkitEnterFullscreen();
+            return Promise.resolve(true);
+          } catch (e) {}
+        }
+
+        /* 2. Standard + prefixed requestFullscreen on the video element
+              first, then on <html>, then on <body>. */
+        var targets = [video, document.documentElement, document.body];
+        var methods = [
+          "requestFullscreen",
+          "webkitRequestFullscreen",
+          "webkitRequestFullScreen",
+          "mozRequestFullScreen",
+          "msRequestFullscreen"
         ];
-        for (var i = 0; i < fns.length; i++) {
-          if (typeof fns[i] === "function") {
+        var lastErr = null;
+        for (var t = 0; t < targets.length; t++) {
+          var el = targets[t];
+          if (!el) continue;
+          for (var m = 0; m < methods.length; m++) {
+            var fn = el[methods[m]];
+            if (typeof fn !== "function") continue;
             try {
-              var r = fns[i].call(el, { navigationUI: "hide" });
-              return (r && typeof r.then === "function") ? r : Promise.resolve();
+              var r = fn.call(el);
+              if (r && typeof r.then === "function") return r;
+              return Promise.resolve(true);
             } catch (e) {
-              try { fns[i].call(el); } catch (e2) {}
+              lastErr = e;
             }
           }
         }
-        return Promise.reject(new Error("no fullscreen api"));
+        return Promise.reject(lastErr || new Error("fullscreen unavailable"));
       }
 
-      function goFullscreen() {
-        if (isFullscreen()) return Promise.resolve();
-        fsLocked = true;
-        /* Try the video first (PS4 media fullscreen is the smoothest), then
-           the document body as a fallback. */
-        return requestFs(video).catch(function () {
-          return requestFs(document.documentElement);
-        }).catch(function () {
-          return requestFs(document.body);
-        });
+      /* Attempt fullscreen repeatedly. Browsers only grant it inside a user
+         gesture, so the retry-on-input handlers below are the real fix. */
+      function attemptFs() {
+        if (!fsWanted || video.ended) return;
+        requestFullscreen().catch(function () {});
       }
 
-      /* If the user (or the OS) drops out of fullscreen while the video is
-         still playing, try to go right back in. Ignored once the video has
-         ended, so the close-tab sequence isn't fought. */
-      ["fullscreenchange", "webkitfullscreenchange",
-       "mozfullscreenchange", "MSFullscreenChange"].forEach(function (evt) {
-        document.addEventListener(evt, function () {
-          if (!fsLocked) return;
-          if (video.ended) return;
-          if (isFullscreen()) return;
-          /* small delay so the engine finishes its own transition first */
-          setTimeout(function () {
-            if (video.ended) return;
-            goFullscreen();
-          }, 200);
-        }, false);
-      });
-
-      /* ---------- auto-close on video end ---------- */
-      function tryCloseTab() {
-        if (closed) return;
-        closed = true;
-        fsLocked = false;   // stop chasing fullscreen once we're closing
-
-        /* Exit fullscreen before we blank the page, so the OS window
-           isn't left stuck in fullscreen when the tab goes away. */
-        try {
-          if (document.exitFullscreen) document.exitFullscreen();
-          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-          else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
-          else if (document.msExitFullscreen) document.msExitFullscreen();
-        } catch (e) {}
-
-        try { window.open("", "_self"); } catch (e) {}
-        try { window.close(); } catch (e) {}
-
-        try {
-          document.body.classList.add("ended");
-          document.documentElement.innerHTML = "";
-          document.documentElement.style.background = "#000";
-          document.documentElement.style.margin = "0";
-        } catch (e) {}
-
-        try { window.location.replace("about:blank"); } catch (e) {}
-        try { window.stop && window.stop(); } catch (e) {}
-      }
-
-      /* ---------- start video with sound + fullscreen ---------- */
+      /* ---------- start the video ---------- */
       function startVideo() {
         if (started) return;
         started = true;
 
-        /* Kick fullscreen off first, while we (hopefully) still have
-           whatever user activation the launch tap left behind. Even if it
-           is refused, play proceeds -- the CSS cover keeps the video
-           filling the screen and the first tap promotes it. */
-        goFullscreen().catch(function () {});
+        /* Ask for fullscreen right away. If the gesture requirement blocks
+           it, the input listeners below will land it on the next tap. */
+        attemptFs();
 
+        /* Play with sound. Fall back to muted-then-unmute if the browser
+           refuses autoplay-with-sound. */
         try { video.currentTime = 0; } catch (e) {}
         video.muted = false;
         try { video.volume = 1.0; } catch (e) {}
 
         var p;
-        try {
-          p = video.play();
-        } catch (e) {
+        try { p = video.play(); }
+        catch (e) {
           video.muted = true;
           try { video.play(); } catch (e2) {}
           return;
@@ -532,8 +496,11 @@
       /* Warm the video up so the first frame is decoded and ready. */
       try { video.load(); } catch (e) {}
 
-      video.addEventListener("ended", function () { tryCloseTab(); });
-      video.addEventListener("error", function () { tryCloseTab(); });
+      /* The video ends -> do nothing fancy. Just stop chasing fullscreen so
+         the OS can drop out of it naturally on the next user action. */
+      video.addEventListener("ended", function () {
+        fsWanted = false;
+      });
 
       var obs = new MutationObserver(function () {
         if (document.body.classList.contains("done")) {
@@ -545,33 +512,60 @@
         attributes: true,
         attributeFilter: ["class"]
       });
-
       if (document.body.classList.contains("done")) startVideo();
 
-      /* Block the right-click / long-press context menu on the video. */
+      /* ---------- retry fullscreen on every kind of user input ----------
+         Browsers only grant fullscreen inside a real gesture. Any tap,
+         click, key, or touch after the video starts will trigger it. */
+      function onInput() {
+        if (!started) return;
+        if (!fsWanted) return;
+        if (video.ended) return;
+        /* Unmute if it ended up muted, then push fullscreen. */
+        if (video.muted) {
+          try { video.muted = false; video.volume = 1.0; } catch (e) {}
+        }
+        if (!isFullscreen()) attemptFs();
+      }
+      window.addEventListener("click",     onInput, true);
+      window.addEventListener("mousedown", onInput, true);
+      window.addEventListener("keydown",   onInput, true);
+      window.addEventListener("touchend",  onInput, true);
+      window.addEventListener("pointerup", onInput, true);
+
+      /* ---------- keep trying if the OS boots us out ----------
+         PS4 sometimes exits fullscreen on its own. If the video is still
+         playing, immediately re-enter. */
+      ["fullscreenchange", "webkitfullscreenchange",
+       "webkitbeginfullscreen", "webkitendfullscreen",
+       "mozfullscreenchange", "MSFullscreenChange"].forEach(function (evt) {
+        document.addEventListener(evt, function () {
+          if (!started || !fsWanted || video.ended) return;
+          if (isFullscreen()) return;
+          /* Brief delay so the engine can finish its own transition. */
+          setTimeout(function () {
+            if (!fsWanted || video.ended) return;
+            if (isFullscreen()) return;
+            attemptFs();
+          }, 150);
+        }, false);
+      });
+
+      /* Also listen for PS4's own fullscreen state on the video element. */
+      video.addEventListener("webkitbeginfullscreen", function () {});
+      video.addEventListener("webkitendfullscreen", function () {
+        if (!fsWanted || video.ended) return;
+        setTimeout(function () {
+          if (!fsWanted || video.ended) return;
+          attemptFs();
+        }, 150);
+      });
+
+      /* Block the context menu on the video. */
       video.addEventListener("contextmenu", function (e) {
         e.preventDefault();
         return false;
       });
-
-      /* Any tap or click anywhere while the video is live:
-           - unmutes if it ended up muted, and
-           - re-requests fullscreen (browsers unlock it with a real gesture) */
-      function gestureBoost(e) {
-        if (!started) return;
-        if (video.ended) return;
-        if (video.muted) {
-          try { video.muted = false; video.volume = 1.0; } catch (er) {}
-        }
-        if (!isFullscreen() && fsLocked) {
-          goFullscreen().catch(function () {});
-        }
-        /* don't preventDefault -- some browsers need the gesture to bubble */
-      }
-      window.addEventListener("click",     gestureBoost, true);
-      window.addEventListener("keydown",   gestureBoost, true);
-      window.addEventListener("touchend",  gestureBoost, true);
-      window.addEventListener("pointerup", gestureBoost, true);
     })();
   </script>
   <script type="module">
