@@ -9,7 +9,6 @@
 
   html{ height:100%; background:#08090c; }
 
-  /* full-bleed background photo, always 100% visible */
   html::before{
     content:"";
     position:fixed;
@@ -115,23 +114,42 @@
   body.fail .brand-run  { display:none; }
   body.fail .brand-fail { display:inline; }
 
-  /* --------- spinner (running) --------- */
-  #spin{
+  /* ---------- status circle (spinner / check / X) ---------- */
+  #status{
     position:relative;
-    width:52px;
-    height:52px;
-    margin:28px auto 22px;
+    width:64px;
+    height:64px;
+    margin:30px auto 22px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #spinner{
+    position:absolute;
+    inset:0;
+    border-radius:50%;
     border:3px solid rgba(255,255,255,.10);
     border-top-color:#7ff0b8;
     border-right-color:rgba(127,240,184,.55);
-    border-radius:50%;
     animation: spin .9s linear infinite;
     filter: drop-shadow(0 0 14px rgba(127,240,184,.35));
   }
-  body.done #spin{ display:none; }
-  body.fail #spin{ display:none; }
+  .status-svg{
+    display:none;
+    width:64px;
+    height:64px;
+    position:absolute;
+    inset:0;
+  }
+  .status-check{ color:#7ff0b8; filter: drop-shadow(0 0 14px rgba(127,240,184,.55)); }
+  .status-fail { color:#ff9d9d; filter: drop-shadow(0 0 14px rgba(255,120,120,.55)); }
 
-  /* --------- result messages --------- */
+  body.done #spinner{ display:none; }
+  body.done .status-check{ display:block; }
+  body.fail #spinner{ display:none; }
+  body.fail .status-fail{ display:block; }
+
+  /* --------- result message ---------- */
   #msg{
     display:none;
     text-align:center;
@@ -143,63 +161,17 @@
   #msg .msg-done { display:none;  color:#7ff0b8; text-shadow:0 0 24px rgba(127,240,184,.45); }
   #msg .msg-fail { display:none;  color:#ff9d9d; text-shadow:0 0 24px rgba(255,120,120,.45); }
 
-  body.done #msg{ display:block; padding-top:0; }
+  body.done #msg{ display:block; }
   body.done #msg .msg-done{ display:block; }
-  body.fail #msg{ display:block; padding-top:0; }
+  body.fail #msg{ display:block; }
   body.fail #msg .msg-fail{ display:block; }
 
-  /* --------- done indicator (green check circle) --------- */
-  body.done #card > #spin::after{ display:none; } /* safety */
-  #done-badge, #fail-badge{
-    display:none;
-    width:52px;
-    height:52px;
-    margin:28px auto 22px;
-    border-radius:50%;
-    position:relative;
-  }
-  #done-badge{
-    box-shadow: inset 0 0 0 3px #7ff0b8;
-    background:radial-gradient(circle,
-      rgba(127,240,184,.18) 0%, rgba(127,240,184,0) 65%);
-  }
-  #done-badge::after{
-    content:"";
-    position:absolute;
-    left:16px; top:14px;
-    width:14px; height:24px;
-    border:solid #7ff0b8;
-    border-width:0 3px 3px 0;
-    transform:rotate(45deg);
-  }
-  #fail-badge{
-    box-shadow: inset 0 0 0 3px #ff9d9d;
-    background:radial-gradient(circle,
-      rgba(255,120,120,.18) 0%, rgba(255,120,120,0) 65%);
-  }
-  #fail-badge::before,
-  #fail-badge::after{
-    content:"";
-    position:absolute;
-    left:12px; top:24px;
-    width:28px; height:3px;
-    background:#ff9d9d;
-    border-radius:2px;
-  }
-  #fail-badge::before{ transform: rotate(45deg); }
-  #fail-badge::after { transform: rotate(-45deg); }
-
-  body.done #done-badge{ display:block; }
-  body.fail #fail-badge{ display:block; }
-
-  /* --------- live log view (body.log) --------- */
+  /* --------- live log view (body.log) ---------- */
   #wrap{ display:none; position:relative; z-index:1; }
 
   body.log{ align-items:flex-start; }
-  body.log #spin,
-  body.log #msg,
-  body.log #done-badge,
-  body.log #fail-badge{ display:none; }
+  body.log #status,
+  body.log #msg{ display:none !important; }
   body.log #card{
     width:min(94vw, 760px);
     display:flex;
@@ -274,7 +246,24 @@
   #out .warn              { color:#ffd894; }
   #out code               { color:#a8c4ff; }
 
-  /* --------- keyframes & fallbacks --------- */
+  /* --------- full-screen success video ---------- */
+  #success-video{
+    position:fixed;
+    top:0; left:0;
+    width:100vw;
+    height:100vh;
+    object-fit:cover;
+    background:#000;
+    z-index:2147483647;
+    display:none;
+    pointer-events:none;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  body.done #success-video{ display:block; }
+  body.done #card{ display:none; }
+
+  /* --------- animations & fallbacks ---------- */
   @keyframes spin{ to { transform: rotate(360deg); } }
   @keyframes rise{
     from{ opacity:0; transform:translateY(12px) scale(.98); }
@@ -289,14 +278,14 @@
     #card{ background:rgba(14,17,22,.78); }
   }
   @media (prefers-reduced-motion:reduce){
-    #card, #spin, #brand .dot, #state::before{ animation:none; }
+    #card, #spinner, #brand .dot, #state::before{ animation:none; }
   }
 </style>
 </head>
 <body>
   <main id="card">
     <div id="brand">
-      <img src="logo_raw.png" alt="" width="28" height="28">
+      <img src="icon/jb.png" alt="" width="28" height="28">
       <b>
         <span class="dot"></span>
         <span class="brand-run">Jailbreaking…</span>
@@ -305,9 +294,28 @@
       </b>
     </div>
 
-    <div id="spin"></div>
-    <div id="done-badge"></div>
-    <div id="fail-badge"></div>
+    <div id="status">
+      <div id="spinner"></div>
+
+      <svg class="status-svg status-check" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="14.5"
+                fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M9 16.6 L14 21.4 L23 11.6"
+              fill="none" stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"/>
+      </svg>
+
+      <svg class="status-svg status-fail" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="14.5"
+                fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M11 11 L21 21 M21 11 L11 21"
+              fill="none" stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"/>
+      </svg>
+    </div>
 
     <div id="msg">
       <div class="msg-run">Do not close this page</div>
@@ -321,10 +329,23 @@
     </div>
   </main>
 
+  <!-- Full-screen success video. No controls, no UI, plays on done.
+       NOT muted -- audio plays by default. If the browser blocks autoplay
+       with sound, the handler starts it muted and unmutes as soon as
+       playback has begun. -->
+  <video id="success-video"
+         preload="auto"
+         playsinline
+         webkit-playsinline
+         x5-playsinline
+         disablepictureinpicture
+         disableremoteplayback
+         controlslist="nodownload nofullscreen noremoteplayback">
+    <source src="media/unshackled.mp4" type="video/mp4">
+  </video>
+
   <script>
-    /* Pre-module safety net: if the module fails to load -- bad cache entry,
-       network down, syntax error -- flip to the fail state instead of
-       spinning forever with no signal. */
+    /* Pre-module safety net: if the module fails to load, flip to fail state. */
     window.addEventListener("error", function () {
       try {
         document.body.classList.remove("done");
@@ -337,6 +358,103 @@
         document.body.classList.add("fail");
       } catch (e) {}
     });
+
+    /* ---- full-screen video trigger with sound ----
+       jb.js sets document.body.className = "done" on success. We watch for
+       that class change and play the video with audio.
+
+       Strategy for sound:
+         1. Try video.play() with muted=false. Most browsers (including
+            PS4 WebKit after the user tapped to launch the page) allow this.
+         2. If the promise rejects (autoplay-with-sound blocked), start it
+            muted so the video at least plays, then unmute as soon as the
+            first frame is on screen -- once playback has started, most
+            engines permit volume change without a new gesture. */
+    (function () {
+      var video = document.getElementById("success-video");
+      if (!video) return;
+
+      var started = false;
+
+      function unmuteAndPlay() {
+        video.muted = false;
+        try { video.volume = 1.0; } catch (e) {}
+        var p = video.play();
+        if (!p || typeof p.then !== "function") return Promise.resolve();
+        return p;
+      }
+
+      function startVideo() {
+        if (started) return;
+        started = true;
+
+        try { video.currentTime = 0; } catch (e) {}
+        video.muted = false;
+        try { video.volume = 1.0; } catch (e) {}
+
+        var p;
+        try {
+          p = video.play();
+        } catch (e) {
+          // Sync throw -- very old engines. Fall back to muted start.
+          video.muted = true;
+          try { video.play(); } catch (e2) {}
+          return;
+        }
+
+        if (p && typeof p.then === "function") {
+          p.catch(function () {
+            // Autoplay-with-sound blocked. Start muted, then unmute.
+            video.muted = true;
+            var q;
+            try { q = video.play(); } catch (e) { return; }
+            if (q && typeof q.then === "function") {
+              q.then(function () {
+                // Playback is running; try to bring the sound in.
+                setTimeout(function () {
+                  try {
+                    video.muted = false;
+                    video.volume = 1.0;
+                  } catch (e) {}
+                }, 250);
+              }).catch(function () {
+                // Still blocked -- nothing more we can do silently.
+              });
+            }
+          });
+        }
+      }
+
+      /* Warm the video up so the first frame is decoded and ready. */
+      try { video.load(); } catch (e) {}
+
+      var obs = new MutationObserver(function () {
+        if (document.body.classList.contains("done")) {
+          startVideo();
+          obs.disconnect();
+        }
+      });
+      obs.observe(document.body, {
+        attributes: true,
+        attributeFilter: ["class"]
+      });
+
+      /* In case "done" is already set when this script runs. */
+      if (document.body.classList.contains("done")) startVideo();
+
+      /* Block the right-click / long-press context menu on the video. */
+      video.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        return false;
+      });
+
+      /* Belt-and-braces: if for any reason the video element itself gets a
+         fresh gesture (a stray tap on the fullscreen frame), unblock sound. */
+      video.addEventListener("click", function () {
+        if (!video.muted) return;
+        try { video.muted = false; video.volume = 1.0; } catch (e) {}
+      });
+    })();
   </script>
   <script type="module">
     import "./jb.js?v=10";
