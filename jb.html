@@ -46,6 +46,7 @@
   /* ---- glass rectangle ---- */
   #card{
     position:relative;
+    z-index:10;
     width:min(92vw, 440px);
     border-radius:20px;
     background:rgba(255,255,255,.065);
@@ -246,7 +247,11 @@
   #out .warn              { color:#ffd894; }
   #out code               { color:#a8c4ff; }
 
-  /* --------- full-screen success video ---------- */
+  /* --------- full-screen success video ----------
+     The video is always in the layout. We only fade its opacity in
+     once the "playing" event fires (first frame is on screen). This
+     avoids the "black rectangle" that happens when a video element
+     is displayed before it has decoded a frame. */
   #success-video{
     position:fixed;
     top:0; left:0;
@@ -254,14 +259,24 @@
     height:100vh;
     object-fit:cover;
     background:#000;
-    z-index:2147483647;
-    display:none;
+    opacity:0;
     pointer-events:none;
+    z-index:1;
+    transition: opacity .35s ease;
     -webkit-user-select:none;
     user-select:none;
   }
-  body.done #success-video{ display:block; }
-  body.done #card{ display:none; }
+  /* Only when the JS has confirmed real playback do we show it and
+     hide the card. Until then the card stays visible, so you never
+     stare at a black void. */
+  body.done.video-playing #success-video{
+    opacity:1;
+    z-index:2147483647;
+    pointer-events:auto;
+  }
+  body.done.video-playing #card{
+    display:none;
+  }
 
   /* --------- animations & fallbacks ---------- */
   @keyframes spin{ to { transform: rotate(360deg); } }
@@ -279,6 +294,7 @@
   }
   @media (prefers-reduced-motion:reduce){
     #card, #spinner, #brand .dot, #state::before{ animation:none; }
+    #success-video{ transition:none; }
   }
 </style>
 </head>
@@ -329,10 +345,8 @@
     </div>
   </main>
 
-  <!-- Full-screen success video. No controls, no UI, plays on done.
-       NOT muted -- audio plays by default. If the browser blocks autoplay
-       with sound, the handler starts it muted and unmutes as soon as
-       playback has begun. -->
+  <!-- Full-screen success video. Always present, opacity 0 until the
+       "playing" event confirms a frame is rendering. Unmuted by default. -->
   <video id="success-video"
          preload="auto"
          playsinline
@@ -348,84 +362,105 @@
     /* Pre-module safety net: if the module fails to load, flip to fail state. */
     window.addEventListener("error", function () {
       try {
-        document.body.classList.remove("done");
+        document.body.classList.remove("done", "video-playing");
         document.body.classList.add("fail");
       } catch (e) {}
     });
     window.addEventListener("unhandledrejection", function () {
       try {
-        document.body.classList.remove("done");
+        document.body.classList.remove("done", "video-playing");
         document.body.classList.add("fail");
       } catch (e) {}
     });
 
-    /* ---- full-screen video trigger with sound ----
-       jb.js sets document.body.className = "done" on success. We watch for
-       that class change and play the video with audio.
+    /* ---- full-screen video trigger, with black-frame protection ----
+       The card only hides once the "playing" event has fired. That event
+       means the browser has actually decoded and is painting a frame.
+       Before that, we keep the card visible even if body.done is set.
 
-       Strategy for sound:
-         1. Try video.play() with muted=false. Most browsers (including
-            PS4 WebKit after the user tapped to launch the page) allow this.
-         2. If the promise rejects (autoplay-with-sound blocked), start it
-            muted so the video at least plays, then unmute as soon as the
-            first frame is on screen -- once playback has started, most
-            engines permit volume change without a new gesture. */
+       Autoplay-with-sound may be blocked on some engines. In that case
+       we start muted, then unmute once playback has begun. */
     (function () {
       var video = document.getElementById("success-video");
       if (!video) return;
 
       var started = false;
+      var isPlaying = false;
+      var startedAt = 0;
+      var watchdog = null;
 
-      function unmuteAndPlay() {
-        video.muted = false;
-        try { video.volume = 1.0; } catch (e) {}
-        var p = video.play();
-        if (!p || typeof p.then !== "function") return Promise.resolve();
-        return p;
+      function markPlaying() {
+        if (isPlaying) return;
+        isPlaying = true;
+        // Now it's safe to show the video and hide the card.
+        try { document.body.classList.add("video-playing"); } catch (e) {}
+        // Bring in the sound if we had to start muted.
+        if (video.muted) {
+          try { video.muted = false; video.volume = 1.0; } catch (e) {}
+        }
       }
 
-      function startVideo() {
-        if (started) return;
-        started = true;
-
+      function attemptPlay() {
         try { video.currentTime = 0; } catch (e) {}
-        video.muted = false;
-        try { video.volume = 1.0; } catch (e) {}
+        try { video.muted = false; video.volume = 1.0; } catch (e) {}
 
         var p;
         try {
           p = video.play();
         } catch (e) {
-          // Sync throw -- very old engines. Fall back to muted start.
-          video.muted = true;
-          try { video.play(); } catch (e2) {}
+          // Synchronous throw: fall back to muted start.
+          try {
+            video.muted = true;
+            video.play();
+          } catch (e2) {}
           return;
         }
 
         if (p && typeof p.then === "function") {
           p.catch(function () {
-            // Autoplay-with-sound blocked. Start muted, then unmute.
-            video.muted = true;
+            // Autoplay-with-sound rejected: start muted, unmute after playing.
+            try { video.muted = true; } catch (e) {}
             var q;
             try { q = video.play(); } catch (e) { return; }
             if (q && typeof q.then === "function") {
               q.then(function () {
-                // Playback is running; try to bring the sound in.
                 setTimeout(function () {
-                  try {
-                    video.muted = false;
-                    video.volume = 1.0;
-                  } catch (e) {}
+                  if (isPlaying) return;
+                  try { video.muted = false; video.volume = 1.0; } catch (e) {}
                 }, 250);
-              }).catch(function () {
-                // Still blocked -- nothing more we can do silently.
-              });
+              }).catch(function () { /* nothing more to do silently */ });
             }
           });
         }
       }
 
-      /* Warm the video up so the first frame is decoded and ready. */
+      function startVideo() {
+        if (started) return;
+        started = true;
+        startedAt = Date.now();
+        attemptPlay();
+
+        // Watchdog: if we haven't seen "playing" within ~6s, try play() again.
+        // This catches the case where the first play() silently did nothing.
+        watchdog = setInterval(function () {
+          if (isPlaying) { clearInterval(watchdog); return; }
+          if (Date.now() - startedAt > 15000) {
+            clearInterval(watchdog);
+            return;
+          }
+          attemptPlay();
+        }, 6000);
+      }
+
+      video.addEventListener("playing", markPlaying);
+      video.addEventListener("timeupdate", markPlaying); // safety net
+
+      video.addEventListener("error", function () {
+        // Couldn't load the video: keep the card visible, don't show a black box.
+        try { document.body.classList.remove("video-playing"); } catch (e) {}
+      });
+
+      // Kick off the preload early so the video is buffered by the time we need it.
       try { video.load(); } catch (e) {}
 
       var obs = new MutationObserver(function () {
@@ -439,20 +474,19 @@
         attributeFilter: ["class"]
       });
 
-      /* In case "done" is already set when this script runs. */
       if (document.body.classList.contains("done")) startVideo();
 
-      /* Block the right-click / long-press context menu on the video. */
       video.addEventListener("contextmenu", function (e) {
         e.preventDefault();
         return false;
       });
 
-      /* Belt-and-braces: if for any reason the video element itself gets a
-         fresh gesture (a stray tap on the fullscreen frame), unblock sound. */
+      // If a tap lands on the video, resume / unmute.
       video.addEventListener("click", function () {
-        if (!video.muted) return;
-        try { video.muted = false; video.volume = 1.0; } catch (e) {}
+        try {
+          if (video.paused) video.play();
+          if (video.muted) { video.muted = false; video.volume = 1.0; }
+        } catch (e) {}
       });
     })();
   </script>
