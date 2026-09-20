@@ -1,5 +1,5 @@
 # Webkit13
-* For 13.00 to 13.52
+* For 13.02 to 13.52
 
 ---
 ## Source code & Credits
