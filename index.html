@@ -119,6 +119,18 @@
   }
   #cache.cacheok{ color:#7ff0b8; }
 
+  #prompt{
+    margin-top:14px;
+    padding-top:12px;
+    min-height:15px;
+    font-size:13px;
+    letter-spacing:.02em;
+    color:#ffd894;
+    border-top:1px solid rgba(255,255,255,.09);
+    display:none;
+  }
+  #prompt.show{ display:block; }
+
   .ok   { color:#7ff0b8; }
   .bad  { color:#ff9d9d; }
   .warn { color:#ffd894; }
@@ -131,9 +143,15 @@
     from{ opacity:0; transform:translateY(10px) scale(.985); }
     to  { opacity:1; transform:none; }
   }
+  @keyframes pulse{
+    0%,100%{ opacity:.55; }
+    50%    { opacity:1; }
+  }
+  #prompt.show{ animation: pulse 1.6s ease-in-out infinite; }
 
   @media (prefers-reduced-motion:reduce){
     #card{ animation:none; }
+    #prompt.show{ animation:none; }
   }
 </style>
 </head>
@@ -146,16 +164,24 @@
     <div id="state">detecting firmware...</div>
     <div id="det"></div>
     <div id="cache"></div>
+    <div id="prompt"></div>
   </div>
 </div>
 
 <script>
 (function () {
-    var stateEl = document.getElementById("state");
-    var detEl = document.getElementById("det");
-    var cacheEl = document.getElementById("cache");
-    function setState(t, c) { stateEl.textContent = t; stateEl.className = c || ""; }
+    var stateEl  = document.getElementById("state");
+    var detEl    = document.getElementById("det");
+    var cacheEl  = document.getElementById("cache");
+    var promptEl = document.getElementById("prompt");
+
+    function setState(t, c)  { stateEl.textContent = t; stateEl.className = c || ""; }
     function setCache(t, ok) { cacheEl.textContent = t; cacheEl.className = ok ? "cacheok" : ""; }
+    function setPrompt(t)    {
+        if (t) { promptEl.textContent = t; promptEl.classList.add("show"); }
+        else   { promptEl.textContent = ""; promptEl.classList.remove("show"); }
+    }
+
     var params = new URLSearchParams(location.search);
 
     // Firmwares this build has a MEASURED kernel table for. jb.js still runs its
@@ -181,41 +207,60 @@
                      : " &middot; not in this build's kernel table");
 
     var target = "jb.html" + location.search;
-    function go() { setState("loading jailbreak...", "warn"); location.replace(target); }
 
+    // The launch is never automatic. Every path ends here. One press of X, or
+    // one tap, navigates to jb.html.
+    var launched = false;
     function waitForTap(msg, action) {
         setState(msg, "warn");
+        setPrompt("Press X or tap the screen to start");
         function fire() {
+            if (launched) return;
+            launched = true;
             window.removeEventListener("click", fire);
             window.removeEventListener("keydown", fire);
+            window.removeEventListener("touchend", fire);
+            setPrompt("");
             action();
         }
         window.addEventListener("click", fire);
         window.addEventListener("keydown", fire);
+        window.addEventListener("touchend", fire);
     }
 
-    // Off-target consoles are not launched automatically -- one tap still runs
-    // it, so a user-agent quirk on the real 13.52 console can never lock it out.
+    function go() {
+        setState("loading jailbreak...", "warn");
+        setPrompt("");
+        location.replace(target);
+    }
+
+    // Unsupported firmware: still one-tap launchable, so a UA quirk can never
+    // lock the real console out. No auto-launch here either.
     if (!supported) {
         setState("UNSUPPORTED FIRMWARE", "bad");
-        waitForTap("UNSUPPORTED (" + (key || "unknown") + ") -- press X or tap to run anyway", go);
+        waitForTap(
+            "UNSUPPORTED (" + (key || "unknown") + ")",
+            go
+        );
         return;
     }
 
+    // Supported firmware: warm the cache in the background, then ask for a tap.
+    // Nothing navigates on its own -- the cache events only update the little
+    // status line; the prompt is what actually arms the launch.
     var ac = window.applicationCache;
     if (!ac || !document.documentElement.hasAttribute("manifest")) {
-        go();
+        waitForTap("READY", go);
     } else if (!navigator.onLine) {
         setCache("offline -- from cache", true);
-        go();
+        waitForTap("READY (offline)", go);
     } else if (ac.status === ac.IDLE) {
         setCache("cached", true);
-        go();
+        waitForTap("READY", go);
     } else if (ac.status === ac.UPDATEREADY) {
         try { ac.swapCache(); } catch (e) {}
         setCache("update downloaded", true);
-        waitForTap("UPDATE READY -- press X or tap to reload & run",
-                   function () { location.reload(); });
+        waitForTap("UPDATE READY", function () { location.reload(); });
     } else {
         setCache("checking cache...");
         ac.addEventListener("downloading",
@@ -226,26 +271,24 @@
         }, false);
         ac.addEventListener("cached", function () {
             setCache("cached for offline use", true);
-            waitForTap("CACHED (first run) -- press X or tap to run", go);
         }, false);
         ac.addEventListener("updateready", function () {
             try { ac.swapCache(); } catch (e) {}
             setCache("update downloaded", true);
-            waitForTap("UPDATE READY -- press X or tap to reload & run",
-                       function () { location.reload(); });
         }, false);
         ac.addEventListener("noupdate", function () {
             setCache("cached -- offline ready", true);
-            go();
         }, false);
         ac.addEventListener("error", function () {
             setCache("cache unavailable");
-            waitForTap("CACHE FAILED -- press X or tap to run anyway", go);
         }, false);
         ac.addEventListener("obsolete", function () {
             setCache("cache obsolete");
-            waitForTap("CACHE OBSOLETE -- press X or tap to run", go);
         }, false);
+
+        // Regardless of how the cache events land, the page sits on the prompt
+        // and waits. The tap launches jb.html with whatever cache state exists.
+        waitForTap("READY", go);
     }
 })();
 </script>
