@@ -1,5 +1,5 @@
 CACHE MANIFEST
-# rev 20260920-live-log-jailbreak
+# rev 20260921-success-video
 
 index.html
 jb.html
@@ -13,7 +13,10 @@ int64.js
 ps4_offsets.js
 rpc_worker.js
 
+icon/jb.png
 background/bg.png
+
+media/unshackled.mp4
 
 payload2.bin
 patches/1302.bin
