@@ -5,6 +5,7 @@ import { offsetsFor } from "./ps4_offsets.js";
 
 const outEl = document.getElementById("out");
 const stateEl = document.getElementById("state");
+try { document.title = "Jailbreak"; } catch (e) {}
 const lines = [];
 let passCount = 0,
   failCount = 0;
@@ -47,11 +48,13 @@ function terse(s) {
   return s;
 }
 
-const SHOW_LOG = params.get("log") === "1";
-if (SHOW_LOG && document.body) document.body.className = "log";
+// Always show the log. The page is a live dashboard now -- no need for ?log=1.
+const SHOW_LOG = true;
+if (document.body) document.body.classList.add("log");
 function finishUI(ok) {
-  if (SHOW_LOG || !document.body) return;
-  document.body.className = ok ? "done" : "fail";
+  if (!document.body) return;
+  document.body.classList.remove("done", "fail");
+  document.body.classList.add(ok ? "done" : "fail");
 }
 function mark(tag, detail) {
   const raw = detail;
@@ -89,6 +92,16 @@ function state(t, c) {
   stateEl.textContent = t;
   stateEl.className = c || "";
 }
+function updateTally() {
+  const t = document.getElementById("tally");
+  if (t)
+    t.innerHTML =
+      "pass=<b>" +
+      passCount +
+      "</b>&nbsp;&nbsp;fail=<i>" +
+      failCount +
+      "</i>";
+}
 function check(name, ok, detail) {
   if (ok) {
     passCount++;
@@ -97,8 +110,10 @@ function check(name, ok, detail) {
     failCount++;
     mark("PROOF-FAIL", name + (detail ? "  " + detail : ""));
   }
+  updateTally();
   return ok;
 }
+updateTally();
 
 const SYS = {
   getpid: 20,
