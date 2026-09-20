@@ -243,8 +243,8 @@
   #out code               { color:#a8c4ff; }
 
   /* ---------- full-screen success video ----------
-     hidden until we know a frame is decoded (loadeddata).
-     Only becomes visible when body ALSO has video-ready. */
+     Classic display: none -> block. No opacity, no z-index games,
+     no transitions. The PS4 WebKit compositor handles this reliably. */
   #success-video{
     position:fixed;
     top:0; left:0;
@@ -252,24 +252,22 @@
     height:100vh;
     object-fit:cover;
     background:#000;
-    opacity:0;
+    z-index:2147483647;
+    display:none;
     pointer-events:none;
-    z-index:1;
-    transition: opacity .3s ease;
     -webkit-user-select:none;
     user-select:none;
   }
-  body.done.video-ready #success-video{
-    opacity:1;
-    z-index:2147483647;
+  body.done #success-video{
+    display:block;
     pointer-events:auto;
   }
-  body.done.video-ready #card{
-    display:none;
-  }
+  /* Card gets taken out of the way entirely when the video plays.
+     !important so the body.log card rules can't keep it visible. */
+  body.done #card{ display:none !important; }
 
-  /* "Tap for sound" pill: shown only if autoplay muted us and the
-     browser won't let us unmute without a fresh gesture. */
+  /* "Tap for sound" pill: shown only when autoplay muted us and the
+     browser wouldn't let us unmute without a fresh user gesture. */
   #sound-hint{
     position:fixed;
     bottom:calc(24px + env(safe-area-inset-bottom));
@@ -277,7 +275,7 @@
     transform: translateX(-50%);
     padding:10px 18px;
     border-radius:999px;
-    background:rgba(0,0,0,.65);
+    background:rgba(0,0,0,.68);
     color:#fff;
     font-size:13px;
     letter-spacing:.02em;
@@ -300,12 +298,11 @@
     50%    { opacity:1; }
   }
 
-  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:innerblur(1px))){
     #card{ background:rgba(14,17,22,.78); }
   }
   @media (prefers-reduced-motion:reduce){
     #card, #spinner, #brand .dot, #state::before{ animation:none; }
-    #success-video{ transition:none; }
     body.video-muted #sound-hint{ animation:none; }
   }
 </style>
@@ -323,7 +320,7 @@
     </div>
 
     <div id="status">
-      <div id="spinner"></div>
+      <div id="sp"></div>
 
       <svg class="status-svg status-check" viewBox="0 0 32 32" aria-hidden="true">
         <circle cx="16" cy="16" r="14.5"
@@ -357,6 +354,7 @@
     </div>
   </main>
 
+  <!-- No muted attribute: we try unmuted first, fall back to muted. -->
   <video id="success-video"
          preload="auto"
          playsinline
@@ -364,8 +362,7 @@
          x5-playsinline
          disablepictureinpicture
          disableremoteplayback
-         controlslist="nodownload nofullscreen noremoteplayback"
-         muted>
+         controlslist="nodownload nofullscreen noremoteplayback">
     <source src="media/unshackled.mp4" type="video/mp4">
   </video>
 
@@ -375,201 +372,162 @@
     /* Pre-module safety net. */
     window.addEventListener("error", function () {
       try {
-        document.body.classList.remove("done", "video-ready", "video-playing");
+        document.body.classList.remove("done", "video-muted");
         document.body.classList.add("fail");
       } catch (e) {}
     });
     window.addEventListener("unhandledrejection", function () {
       try {
-        document.body.classList.remove("done", "video-ready", "video-playing");
+        document.body.classList.remove("done", "video-muted");
         document.body.classList.add("fail");
       } catch (e) {}
     });
 
-    /* ---- success detection + video playback ----------------------------------
-       Two independent triggers for "the jailbreak has finished":
+    /* ---- success detection + video playback ---------------------------------
+       Triggers on EITHER:
+         a) jb.js sets body.className = "done" (default, no ?log=1)
+         b) the #out log text contains PROOF-SUMMARY-FINAL without INCOMPLETE
+            and includes PAYLOAD-RUNNING (covers ?log=1, where jb.js never
+            touches body.className)
 
-         1. body.done / body.fail  -- set by the default jb.js (no ?log=1).
-         2. #out log content + #state text -- catches the ?log=1 path where
-            jb.js never touches body.className.
-
-       When success is detected we mark the body done (if it isn't) and
-       start the video. On failure we leave the card showing the red X.
-
-       The video itself starts MUTED for guaranteed autoplay, then unmutes
-       the moment the "playing" event fires. If the browser refuses the
-       unmute, we show a "Tap for sound" pill and unmute on the next tap. */
+       Video playback: unmuted first, muted fallback, then unmute on the
+       first 'playing' event. If unmute is refused, we show a "Tap for sound"
+       pill and unmute on the next tap anywhere on the page. */
     (function () {
-      var video  = document.getElementById("success-video");
-      var outEl  = document.getElementById("out");
-      var stateEl= document.getElementById("state");
+      var video   = document.getElementById("success-video");
+      var outEl   = document.getElementById("out");
       if (!video) return;
 
       var started   = false;
-      var ready     = false;
-      var playing   = false;
-      var settled   = false;      // reached done or fail already
       var lastPlay  = 0;
 
-      function addClass(c)    { try { document.body.classList.add(c); } catch (e) {} }
-      function removeClass(c) { try { document.body.classList.remove(c); } catch (e) {} }
-      function hasClass(c)    { try { return document.body.classList.contains(c); } catch (e) { return false; } }
+      function hasClass(c){ try { return document.body.classList.contains(c); } catch (e) { return false; } }
+      function addClass(c){ try { document.body.classList.add(c); } catch (e) {} }
+      function removeClass(c){ try { document.body.classList.remove(c); } catch (e) {} }
+
+      function showSoundHint()  { addClass("video-muted"); }
+      function hideSoundHint()  { removeClass("video-muted"); }
 
       function tryUnmute() {
         try { video.muted = false; video.volume = 1.0; } catch (e) {}
         setTimeout(function () {
-          if (video.muted) addClass("video-muted");
-          else removeClass("video-muted");
-        }, 250);
+          if (video.muted) showSoundHint();
+          else hideSoundHint();
+        }, 300);
       }
 
-      function attemptPlay() {
+      function tryPlay() {
         lastPlay = Date.now();
 
-        // Start muted -- muted autoplay is always permitted.
-        try { video.muted = true; } catch (e) {}
+        // First attempt: unmuted.
+        try { video.muted = false; video.volume = 1.0; } catch (e) {}
 
         var p;
-        try { p = video.play(); } catch (e) { return; }
+        try { p = video.play(); }
+        catch (e) {
+          // Sync throw (very old engine) -- immediately fall back to muted.
+          try {
+            video.muted = true;
+            video.play();
+            showSoundHint();
+          } catch (e2) {}
+          return;
+        }
 
         if (p && typeof p.then === "function") {
           p.then(function () {
-            tryUnmute();
+            // Unmuted play succeeded -- clear any old hint.
+            hideSoundHint();
           }).catch(function () {
-            // Even muted playback rejected. Try once more explicitly muted.
-            try {
-              video.muted = true;
-              var q = video.play();
-              if (q && typeof q.then === "function") {
-                q.catch(function () { addClass("video-muted"); });
-              }
-            } catch (e) {}
+            // Autoplay-with-sound rejected. Start muted and unmute on playing.
+            try { video.muted = true; } catch (e) {}
+            var q;
+            try { q = video.play(); } catch (e) { showSoundHint(); return; }
+            if (q && typeof q.then === "function") {
+              q.then(function () {
+                // Playback started muted; try to unmute.
+                tryUnmute();
+              }).catch(function () {
+                showSoundHint();
+              });
+            } else {
+              showSoundHint();
+            }
           });
         }
       }
 
-      function markReady() {
-        if (ready) return;
-        ready = true;
-        addClass("video-ready");
-      }
+      video.addEventListener("playing", function () {
+        if (video.muted) {
+          // Give it a moment, then try unmuting.
+          tryUnmute();
+        } else {
+          hideSoundHint();
+        }
+      });
 
-      function markPlaying() {
-        if (playing) return;
-        playing = true;
-        if (video.muted) tryUnmute();
-      }
-
-      video.addEventListener("loadeddata", markReady);
-      video.addEventListener("canplay",    markReady);
-      video.addEventListener("playing",    markPlaying);
-      video.addEventListener("timeupdate", markPlaying);
-
-      // Any tap on the page unmutes an already-playing video.
+      // Any tap anywhere unmutes an already-playing muted video.
       document.addEventListener("click", function () {
-        if (!playing) return;
-        if (video.muted) tryUnmute();
+        if (!started) return;
+        if (video.muted) {
+          try { video.muted = false; video.volume = 1.0; } catch (e) {}
+          if (!video.muted) hideSoundHint();
+        }
       }, true);
 
-      // Preload as early as possible.
-      try { video.load(); } catch (e) {}
+      // Preload as early as possible so first frame is ready.
+      try { video.preload = "auto"; video.load(); } catch (e) {}
 
-      // ---- Success / failure detection -------------------------------------
-
-      function startVideo() {
+      function start() {
         if (started) return;
         started = true;
-        addClass("done");
-        attemptPlay();
-      }
-
-      function looksLikeSuccess() {
-        // Primary: body.done was set by jb.js.
-        if (hasClass("done")) return true;
-
-        // Secondary: inspect the log / state text. jb.js's default success
-        // path ends with a PROOF-SUMMARY-FINAL line containing the marker,
-        // and a payload-running PROOF-OK. We look for the final summary
-        // plus "INCOMPLETE" absence.
-        try {
-          if (outEl) {
-            var txt = outEl.textContent || "";
-            if (/PROOF-SUMMARY-FINAL/.test(txt) && !/INCOMPLETE/.test(txt)) {
-              // Only treat it as success if the payload actually ran.
-              if (/PAYLOAD-RUNNING/.test(txt) || /PROOF-OK\s+PAYLOAD-RUNNING/.test(txt)) {
-                return true;
-              }
-            }
-          }
-          // If body.log is set and #state was cleared / set to a "done"-ish
-          // string by jb.js, accept that too.
-          if (stateEl && stateEl.textContent === "") {
-            // State text cleared is ambiguous; don't guess.
-          }
-        } catch (e) {}
-        return false;
-      }
-
-      function looksLikeFailure() {
-        if (hasClass("fail")) return true;
-        try {
-          if (stateEl && /threw|no offsets|UNSUPPORTED/i.test(stateEl.textContent || "")) {
-            return true;
-          }
-          if (outEl) {
-            var txt = outEl.textContent || "";
-            if (/PROOF-SUMMARY-FINAL/.test(txt) && /INCOMPLETE/.test(txt)) {
-              return true;
-            }
-          }
-        } catch (e) {}
-        return false;
+        addClass("done");       // reveals the video via CSS
+        try { video.currentTime = 0; } catch (e) {}
+        tryPlay();
       }
 
       function evaluate() {
-        if (settled) return;
-        if (looksLikeSuccess()) {
-          settled = true;
-          startVideo();
-          return;
-        }
-        if (looksLikeFailure()) {
-          settled = true;
-          addClass("fail");
-          return;
+        if (started) return;
+
+        // Trigger 1: body.done set by jb.js
+        if (hasClass("done")) { start(); return; }
+
+        // Trigger 2: log content (only relevant when body.log is set)
+        if (outEl) {
+          var txt = outEl.textContent || "";
+          if (/PROOF-SUMMARY-FINAL/.test(txt) &&
+              !/INCOMPLETE/.test(txt) &&
+              /PAYLOAD-RUNNING/.test(txt)) {
+            start();
+            return;
+          }
         }
       }
 
-      // Watch for body.className changes (default jb.js path).
+      // Watch body class changes (default jb.js path)
       try {
-        var obs = new MutationObserver(evaluate);
-        obs.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+        new MutationObserver(evaluate).observe(document.body, {
+          attributes: true, attributeFilter: ["class"]
+        });
       } catch (e) {}
 
-      // Watch for the log + state to change (the ?log=1 path where
-      // body.className stays "log" forever).
-      try {
-        if (outEl) {
-          var obs2 = new MutationObserver(evaluate);
-          obs2.observe(outEl, { childList: true, subtree: true, characterData: true });
-        }
-      } catch (e) {}
-      try {
-        if (stateEl) {
-          var obs3 = new MutationObserver(evaluate);
-          obs3.observe(stateEl, { childList: true, characterData: true, subtree: true });
-        }
-      } catch (e) {}
+      // Watch #out changes (log-mode path)
+      if (outEl) {
+        try {
+          new MutationObserver(evaluate).observe(outEl, {
+            childList: true, subtree: true, characterData: true
+          });
+        } catch (e) {}
+      }
 
-      // Evaluate once on load, in case state is already settled.
+      // Run once on load in case it's already settled.
       evaluate();
 
-      // Watchdog: every 4s, retry if success but not yet playing; also
-      // re-evaluate the log in case mutations got missed.
+      // Watchdog: if we're in done but the video isn't playing, retry.
       setInterval(function () {
         evaluate();
-        if (hasClass("done") && !playing && Date.now() - lastPlay > 3000) {
-          attemptPlay();
+        if (hasClass("done") && video.paused && Date.now() - lastPlay > 3000) {
+          tryPlay();
         }
       }, 4000);
 
