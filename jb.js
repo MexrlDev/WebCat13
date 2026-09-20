@@ -1,7 +1,33 @@
-import { establishPrimitive } from "./core.js?v=10";
+import { establishPrimitive } from "./core.js";
 import { installWindowP, pairStatus } from "./mem.js";
 import { int64 } from "./int64.js";
 import { offsetsFor } from "./ps4_offsets.js";
+
+// --- boot marker: proves the module actually evaluated ---
+try { document.title = "jb:boot"; } catch (e) {}
+try {
+  if (typeof console !== "undefined" && console.log) {
+    console.log("[jb] module evaluated; UA=" + navigator.userAgent);
+  }
+} catch (e) {}
+
+// Catch anything that escapes the async IIFE so the card still lands
+// on "fail" instead of hanging on the spinner forever.
+window.addEventListener("unhandledrejection", function (e) {
+  try {
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[jb] unhandled rejection:", e && e.reason);
+    }
+  } catch (_) {}
+  try { document.body.className = "fail"; } catch (_) {}
+});
+window.addEventListener("error", function (e) {
+  try {
+    if (typeof console !== "undefined" && console.log) {
+      console.log("[jb] window error:", e && e.message);
+    }
+  } catch (_) {}
+});
 
 const outEl = document.getElementById("out");
 const stateEl = document.getElementById("state");
@@ -1540,9 +1566,6 @@ let allDone = false,
         " 8-byte aligned=" +
         (((W0 >>> 0) & 7) === 0),
     );
-    // Read phase is done: the remaining armings (anchor, caps) touch the
-    // kernel, so from here a failure must NOT auto-reload. Reset the counter
-    // so the next manual run starts fresh.
     clearRetry();
 
     const IDT = new int64(0x00001a00, 0xffffff80);
