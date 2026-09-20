@@ -305,8 +305,18 @@
   </div>
 </main>
 
-<script type="module">
-  import "./jb.js?v=10";
+<script>
+  // Pre-module safety net. If the ES module below fails to load -- because
+  // a sibling import missed the AppCache, because the network is down, or
+  // because a syntax error killed it -- this flips the card to the fail
+  // state instead of leaving the spinner running forever with no signal.
+  window.addEventListener("error", function () {
+    try { document.body.className = "fail"; } catch (e) {}
+  });
+  window.addEventListener("unhandledrejection", function () {
+    try { document.body.className = "fail"; } catch (e) {}
+  });
 </script>
+<script type="module" src="./jb.js"></script>
 </body>
 </html>
