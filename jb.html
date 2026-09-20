@@ -33,7 +33,11 @@
     display:flex;
     align-items:center;
     justify-content:center;
-    padding:24px 20px;
+    padding:
+      calc(24px + env(safe-area-inset-top))
+      calc(20px + env(safe-area-inset-right))
+      calc(24px + env(safe-area-inset-bottom))
+      calc(20px + env(safe-area-inset-left));
     color:#eef2f7;
     font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
@@ -66,29 +70,57 @@
       rgba(255,255,255,.08), rgba(255,255,255,0) 45%);
   }
 
+  /* ---- brand / header ---- */
   #brand{
     position:relative;
-    text-align:center;
-    padding:12px 14px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:12px 16px;
     border-bottom:1px solid rgba(255,255,255,.10);
-    background:rgba(0,0,0,.15);
+    background:rgba(0,0,0,.16);
     z-index:1;
   }
   #brand img{
-    width:28px; height:28px; margin-right:8px;
-    border-radius:50%; vertical-align:middle;
+    width:28px; height:28px;
+    border-radius:50%;
+    flex:0 0 auto;
   }
   #brand b{
-    font-size:15px; font-weight:700; letter-spacing:.14em;
-    color:#e6ebf2; vertical-align:middle;
+    font-size:15px;
+    font-weight:700;
+    letter-spacing:.10em;
+    color:#e6ebf2;
+    display:flex;
+    align-items:center;
+    gap:9px;
+    flex:1;
+    min-width:0;
   }
+  #brand .dot{
+    width:9px; height:9px;
+    border-radius:50%;
+    background:#ffd894;
+    box-shadow:0 0 12px #ffd894;
+    animation: pulse 1.5s ease-in-out infinite;
+    flex:0 0 auto;
+  }
+  .brand-run  { display:inline; }
+  .brand-done { display:none;  color:#7ff0b8; }
+  .brand-fail { display:none;  color:#ff9d9d; }
+  body.done #brand .dot{ background:#7ff0b8; box-shadow:0 0 12px #7ff0b8; animation:none; }
+  body.fail #brand .dot{ background:#ff9d9d; box-shadow:0 0 12px #ff9d9d; animation:none; }
+  body.done .brand-run  { display:none; }
+  body.done .brand-done { display:inline; }
+  body.fail .brand-run  { display:none; }
+  body.fail .brand-fail { display:inline; }
 
-  /* --------- running / done / fail view --------- */
+  /* --------- spinner (running) --------- */
   #spin{
     position:relative;
     width:52px;
     height:52px;
-    margin:28px auto 18px;
+    margin:28px auto 22px;
     border:3px solid rgba(255,255,255,.10);
     border-top-color:#7ff0b8;
     border-right-color:rgba(127,240,184,.55);
@@ -96,41 +128,69 @@
     animation: spin .9s linear infinite;
     filter: drop-shadow(0 0 14px rgba(127,240,184,.35));
   }
+  body.done #spin{ display:none; }
+  body.fail #spin{ display:none; }
+
+  /* --------- result messages --------- */
   #msg{
     display:none;
     text-align:center;
     padding:0 24px 26px;
     font-size:15px;
-    color:#ff9d9d;
-    text-shadow:0 0 24px rgba(255,120,120,.45);
+    line-height:1.4;
   }
+  #msg .msg-run  { display:none;  color:rgba(238,242,247,.70); }
+  #msg .msg-done { display:none;  color:#7ff0b8; text-shadow:0 0 24px rgba(127,240,184,.45); }
+  #msg .msg-fail { display:none;  color:#ff9d9d; text-shadow:0 0 24px rgba(255,120,120,.45); }
 
-  body.done #spin{ display:none; }
-  body.done #msg{ display:none; }
-  body.done #card::before{
-    content:"";
-    display:block;
-    width:52px; height:52px;
-    margin:28px auto 18px;
+  body.done #msg{ display:block; padding-top:0; }
+  body.done #msg .msg-done{ display:block; }
+  body.fail #msg{ display:block; padding-top:0; }
+  body.fail #msg .msg-fail{ display:block; }
+
+  /* --------- done indicator (green check circle) --------- */
+  body.done #card > #spin::after{ display:none; } /* safety */
+  #done-badge, #fail-badge{
+    display:none;
+    width:52px;
+    height:52px;
+    margin:28px auto 22px;
     border-radius:50%;
-    background:
-      radial-gradient(circle, rgba(127,240,184,.18) 0%, rgba(127,240,184,0) 65%);
-    box-shadow: inset 0 0 0 3px #7ff0b8;
-    /* simple check drawn with a rotated ::before */
     position:relative;
   }
-
-  body.fail #spin{ display:none; }
-  body.fail #msg{ display:block; }
-  body.fail #card::before{
-    content:"";
-    display:block;
-    width:52px; height:52px;
-    margin:28px auto 18px;
-    border-radius:50%;
-    box-shadow: inset 0 0 0 3px #ff9d9d;
-    background:radial-gradient(circle, rgba(255,120,120,.18) 0%, rgba(255,120,120,0) 65%);
+  #done-badge{
+    box-shadow: inset 0 0 0 3px #7ff0b8;
+    background:radial-gradient(circle,
+      rgba(127,240,184,.18) 0%, rgba(127,240,184,0) 65%);
   }
+  #done-badge::after{
+    content:"";
+    position:absolute;
+    left:16px; top:14px;
+    width:14px; height:24px;
+    border:solid #7ff0b8;
+    border-width:0 3px 3px 0;
+    transform:rotate(45deg);
+  }
+  #fail-badge{
+    box-shadow: inset 0 0 0 3px #ff9d9d;
+    background:radial-gradient(circle,
+      rgba(255,120,120,.18) 0%, rgba(255,120,120,0) 65%);
+  }
+  #fail-badge::before,
+  #fail-badge::after{
+    content:"";
+    position:absolute;
+    left:12px; top:24px;
+    width:28px; height:3px;
+    background:#ff9d9d;
+    border-radius:2px;
+  }
+  #fail-badge::before{ transform: rotate(45deg); }
+  #fail-badge::after { transform: rotate(-45deg); }
+
+  body.done #done-badge{ display:block; }
+  body.fail #fail-badge{ display:block; }
 
   /* --------- live log view (body.log) --------- */
   #wrap{ display:none; position:relative; z-index:1; }
@@ -138,7 +198,8 @@
   body.log{ align-items:flex-start; }
   body.log #spin,
   body.log #msg,
-  body.log #card::before{ display:none; }
+  body.log #done-badge,
+  body.log #fail-badge{ display:none; }
   body.log #card{
     width:min(94vw, 760px);
     display:flex;
@@ -228,18 +289,31 @@
     #card{ background:rgba(14,17,22,.78); }
   }
   @media (prefers-reduced-motion:reduce){
-    #card, #spin, #state::before{ animation:none; }
+    #card, #spin, #brand .dot, #state::before{ animation:none; }
   }
 </style>
 </head>
 <body>
   <main id="card">
     <div id="brand">
-      <img src="logo_raw.png" alt="" width="28" height="28"><b>RAW-BREAKING</b>
+      <img src="logo_raw.png" alt="" width="28" height="28">
+      <b>
+        <span class="dot"></span>
+        <span class="brand-run">Jailbreaking…</span>
+        <span class="brand-done">Jailbreak complete</span>
+        <span class="brand-fail">Jailbreak failed</span>
+      </b>
     </div>
 
     <div id="spin"></div>
-    <div id="msg">Restart your console (Do Not ReRun!)</div>
+    <div id="done-badge"></div>
+    <div id="fail-badge"></div>
+
+    <div id="msg">
+      <div class="msg-run">Do not close this page</div>
+      <div class="msg-done">Restart your console (Do Not ReRun!)</div>
+      <div class="msg-fail">Restart your console and try again</div>
+    </div>
 
     <div id="wrap">
       <div id="state"></div>
@@ -248,14 +322,20 @@
   </main>
 
   <script>
-    /* Pre-module safety net: if the module below fails to load -- bad cache
-       entry, network down, syntax error killed it -- flip the card to the
-       fail state instead of spinning forever with no signal. */
+    /* Pre-module safety net: if the module fails to load -- bad cache entry,
+       network down, syntax error -- flip to the fail state instead of
+       spinning forever with no signal. */
     window.addEventListener("error", function () {
-      try { document.body.className = "fail"; } catch (e) {}
+      try {
+        document.body.classList.remove("done");
+        document.body.classList.add("fail");
+      } catch (e) {}
     });
     window.addEventListener("unhandledrejection", function () {
-      try { document.body.className = "fail"; } catch (e) {}
+      try {
+        document.body.classList.remove("done");
+        document.body.classList.add("fail");
+      } catch (e) {}
     });
   </script>
   <script type="module">
