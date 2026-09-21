@@ -6,29 +6,21 @@
 <title>RAW 13.52</title>
 <style>
   *{ box-sizing:border-box; }
-
-  html{
-    height:100%;
-    background:#0b0d10;
-  }
-
+  html{ height:100%; background:#0b0d10; }
   html::before{
     content:"";
-    position:fixed;
-    inset:0;
+    position:fixed; inset:0;
     background:url("background/bg.png") center / cover no-repeat;
     z-index:-2;
   }
   html::after{
     content:"";
-    position:fixed;
-    inset:0;
+    position:fixed; inset:0;
     background:radial-gradient(ellipse at center,
       rgba(0,0,0,.05) 0%, rgba(0,0,0,.42) 100%);
     z-index:-1;
     pointer-events:none;
   }
-
   body{
     margin:0;
     min-height:100vh;
@@ -40,7 +32,6 @@
     font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
-
   #card{
     position:relative;
     width:min(92vw,440px);
@@ -63,7 +54,6 @@
     background:linear-gradient(180deg,
       rgba(255,255,255,.08), rgba(255,255,255,0) 45%);
   }
-
   #brand{
     position:relative;
     text-align:center;
@@ -79,13 +69,11 @@
     font-size:15px; font-weight:700; letter-spacing:.14em;
     color:#e6ebf2; vertical-align:middle;
   }
-
   #wrap{
     position:relative;
     padding:18px 20px;
     z-index:1;
   }
-
   #state{
     font-size:20px;
     font-weight:650;
@@ -97,13 +85,11 @@
   #state.ok  { color:#7ff0b8; text-shadow:0 0 20px rgba(110,231,168,.35); }
   #state.warn{ color:#ffd894; text-shadow:0 0 20px rgba(250,204,120,.30); }
   #state.bad { color:#ff9d9d; text-shadow:0 0 20px rgba(255,120,120,.30); }
-
   #det{
     font-size:13px;
     color:rgba(238,242,247,.62);
   }
   #det b{ color:#fff; font-weight:600; }
-
   #cache{
     margin-top:14px;
     padding-top:12px;
@@ -115,7 +101,6 @@
     transition:color .25s ease;
   }
   #cache.cacheok{ color:#7ff0b8; }
-
   #prompt{
     margin-top:14px;
     padding-top:12px;
@@ -127,7 +112,6 @@
     display:none;
   }
   #prompt.show{ display:block; animation: pulse 1.6s ease-in-out infinite; }
-
   #stats{
     margin-top:14px;
     padding-top:12px;
@@ -155,15 +139,9 @@
   .stat-value.ok  { color:#7ff0b8; }
   .stat-value.bad { color:#ff9d9d; }
   .stat-row.stability .stat-value{ color:#ffd894; }
-
-  .ok   { color:#7ff0b8; }
-  .bad  { color:#ff9d9d; }
-  .warn { color:#ffd894; }
-
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
     #card{ background:rgba(16,20,26,.78); }
   }
-
   @keyframes rise{
     from{ opacity:0; transform:translateY(10px) scale(.985); }
     to  { opacity:1; transform:none; }
@@ -172,7 +150,6 @@
     0%,100%{ opacity:.55; }
     50%    { opacity:1; }
   }
-
   @media (prefers-reduced-motion:reduce){
     #card{ animation:none; }
     #prompt.show{ animation:none; }
@@ -227,8 +204,8 @@
             if (raw) {
                 var s = JSON.parse(raw);
                 if (s && typeof s === "object") {
-                    success = s.success | 0;
-                    failed  = s.failed  | 0;
+                    success = (typeof s.success === "number" && s.success >= 0) ? (s.success | 0) : 0;
+                    failed  = (typeof s.failed  === "number" && s.failed  >= 0) ? (s.failed  | 0) : 0;
                 }
             }
         } catch (e) {}
