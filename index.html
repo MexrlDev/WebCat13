@@ -6,29 +6,41 @@
 <title>RAW 13.52</title>
 <style>
   *{ box-sizing:border-box; }
-  html{ height:100%; background:#0b0d10; }
+
+  html{
+    height:100%;
+    background:#0b0d10;
+  }
+
   html::before{
     content:"";
-    position:fixed; inset:0;
+    position:fixed;
+    inset:0;
     background:url("background/bg.png") center / cover no-repeat;
     z-index:-2;
   }
   html::after{
     content:"";
-    position:fixed; inset:0;
+    position:fixed;
+    inset:0;
     background:radial-gradient(ellipse at center,
       rgba(0,0,0,.05) 0%, rgba(0,0,0,.42) 100%);
     z-index:-1;
     pointer-events:none;
   }
+
   body{
-    margin:0; min-height:100vh;
-    display:flex; align-items:center; justify-content:center;
+    margin:0;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
     padding:24px 20px;
     color:#eef2f7;
     font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
+
   #card{
     position:relative;
     width:min(92vw,440px);
@@ -51,6 +63,7 @@
     background:linear-gradient(180deg,
       rgba(255,255,255,.08), rgba(255,255,255,0) 45%);
   }
+
   #brand{
     position:relative;
     text-align:center;
@@ -66,69 +79,83 @@
     font-size:15px; font-weight:700; letter-spacing:.14em;
     color:#e6ebf2; vertical-align:middle;
   }
-  #wrap{ position:relative; padding:18px 20px; z-index:1; }
+
+  #wrap{
+    position:relative;
+    padding:18px 20px;
+    z-index:1;
+  }
+
   #state{
-    font-size:20px; font-weight:650; letter-spacing:.01em;
-    margin:0 0 8px; color:#eef2f7;
+    font-size:20px;
+    font-weight:650;
+    letter-spacing:.01em;
+    margin:0 0 8px;
+    color:#eef2f7;
     transition:color .25s ease, text-shadow .25s ease;
   }
   #state.ok  { color:#7ff0b8; text-shadow:0 0 20px rgba(110,231,168,.35); }
   #state.warn{ color:#ffd894; text-shadow:0 0 20px rgba(250,204,120,.30); }
   #state.bad { color:#ff9d9d; text-shadow:0 0 20px rgba(255,120,120,.30); }
-  #det{ font-size:13px; color:rgba(238,242,247,.62); }
+
+  #det{
+    font-size:13px;
+    color:rgba(238,242,247,.62);
+  }
   #det b{ color:#fff; font-weight:600; }
+
   #cache{
-    margin-top:14px; padding-top:12px; min-height:15px;
-    font-size:12px; letter-spacing:.01em;
+    margin-top:14px;
+    padding-top:12px;
+    min-height:15px;
+    font-size:12px;
+    letter-spacing:.01em;
     color:rgba(238,242,247,.42);
     border-top:1px solid rgba(255,255,255,.09);
     transition:color .25s ease;
   }
   #cache.cacheok{ color:#7ff0b8; }
+
   #prompt{
-    margin-top:14px; padding-top:12px; min-height:15px;
-    font-size:13px; letter-spacing:.02em;
+    margin-top:14px;
+    padding-top:12px;
+    min-height:15px;
+    font-size:13px;
+    letter-spacing:.02em;
     color:#ffd894;
     border-top:1px solid rgba(255,255,255,.09);
     display:none;
   }
   #prompt.show{ display:block; animation: pulse 1.6s ease-in-out infinite; }
 
-  /* ---- stats ---- */
+  /* ---- stats panel ---- */
   #stats{
     margin-top:14px;
     padding-top:12px;
     border-top:1px solid rgba(255,255,255,.09);
     display:flex;
     flex-direction:column;
-    gap:10px;
-  }
-  .stat-block{
-    display:flex;
-    flex-direction:column;
-    gap:3px;
-  }
-  .stat-title{
-    font-size:11px;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-    color:rgba(238,242,247,.45);
-    font-weight:600;
+    gap:6px;
+    font-size:13px;
   }
   .stat-row{
     display:flex;
     justify-content:space-between;
-    align-items:baseline;
-    gap:8px;
+    align-items:center;
   }
-  .stat-pass{ color:#7ff0b8; font-weight:700; font-size:14px; }
-  .stat-fail{ color:#ff9d9d; font-weight:700; font-size:14px; }
-  .stat-stab{ color:#ffd894; font-weight:700; font-size:14px; margin-left:auto; }
   .stat-label{
-    font-size:11px;
-    color:rgba(238,242,247,.45);
-    letter-spacing:.05em;
+    color:rgba(238,242,247,.55);
+    letter-spacing:.03em;
   }
+  .stat-value{
+    font-weight:700;
+    font-size:15px;
+    color:#fff;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-value.ok  { color:#7ff0b8; }
+  .stat-value.bad { color:#ff9d9d; }
+  .stat-row.stability .stat-value{ color:#ffd894; }
 
   .ok   { color:#7ff0b8; }
   .bad  { color:#ff9d9d; }
@@ -137,6 +164,7 @@
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
     #card{ background:rgba(16,20,26,.78); }
   }
+
   @keyframes rise{
     from{ opacity:0; transform:translateY(10px) scale(.985); }
     to  { opacity:1; transform:none; }
@@ -145,6 +173,7 @@
     0%,100%{ opacity:.55; }
     50%    { opacity:1; }
   }
+
   @media (prefers-reduced-motion:reduce){
     #card{ animation:none; }
     #prompt.show{ animation:none; }
@@ -162,29 +191,17 @@
     <div id="cache"></div>
     <div id="prompt"></div>
     <div id="stats">
-      <div class="stat-block" id="stat-jb">
-        <div class="stat-title">JB 13.52</div>
-        <div class="stat-row">
-          <span class="stat-label">Pass</span><b class="stat-pass">0</b>
-          <span class="stat-label">Fail</span><b class="stat-fail">0</b>
-          <span class="stat-stab">—</span>
-        </div>
+      <div class="stat-row">
+        <span class="stat-label">Success</span>
+        <b class="stat-value ok" id="stat-success">0</b>
       </div>
-      <div class="stat-block" id="stat-poops">
-        <div class="stat-title">NetCTRL</div>
-        <div class="stat-row">
-          <span class="stat-label">Pass</span><b class="stat-pass">0</b>
-          <span class="stat-label">Fail</span><b class="stat-fail">0</b>
-          <span class="stat-stab">—</span>
-        </div>
+      <div class="stat-row">
+        <span class="stat-label">Failed</span>
+        <b class="stat-value bad" id="stat-failed">0</b>
       </div>
-      <div class="stat-block" id="stat-lapse">
-        <div class="stat-title">lapse</div>
-        <div class="stat-row">
-          <span class="stat-label">Pass</span><b class="stat-pass">0</b>
-          <span class="stat-label">Fail</span><b class="stat-fail">0</b>
-          <span class="stat-stab">—</span>
-        </div>
+      <div class="stat-row stability">
+        <span class="stat-label">Stability</span>
+        <b class="stat-value" id="stat-stability">—</b>
       </div>
     </div>
   </div>
@@ -204,11 +221,11 @@
         else   { promptEl.textContent = ""; promptEl.classList.remove("show"); }
     }
 
-    // ---- read all three counters from localStorage ----
-    function loadOne(key, blockId) {
+    // ---- read counter from localStorage ----
+    (function loadStats() {
         var success = 0, failed = 0;
         try {
-            var raw = localStorage.getItem(key);
+            var raw = localStorage.getItem("ps4-jb-stats-v1");
             if (raw) {
                 var s = JSON.parse(raw);
                 if (s && typeof s === "object") {
@@ -217,33 +234,26 @@
                 }
             }
         } catch (e) {}
+
         var total = success + failed;
         var stability = total > 0 ? Math.round((success / total) * 100) : null;
 
-        var block = document.getElementById(blockId);
-        if (!block) return;
-        var pass = block.querySelector(".stat-pass");
-        var fail = block.querySelector(".stat-fail");
-        var stab = block.querySelector(".stat-stab");
-        if (pass) pass.textContent = String(success);
-        if (fail) fail.textContent = String(failed);
-        if (stab) stab.textContent = (stability === null) ? "—" : (stability + "%");
-    }
-    loadOne("ps4-jb-stats-v1",    "stat-jb");      // jb.html / 663 chain
-    loadOne("ps4-poops-stats-v1", "stat-poops");   // chain_poops.html / NetCTRL
-    loadOne("ps4-lapse-stats-v1", "stat-lapse");   // chain_lapse.html / lapse
+        var sEl = document.getElementById("stat-success");
+        var fEl = document.getElementById("stat-failed");
+        var tEl = document.getElementById("stat-stability");
+        if (sEl) sEl.textContent = String(success);
+        if (fEl) fEl.textContent = String(failed);
+        if (tEl) tEl.textContent = (stability === null) ? "—" : (stability + "%");
+    })();
 
     var params = new URLSearchParams(location.search);
 
-    // Firmwares we route. 13.02+ goes to jb.html (663).
-    // 12.50-13.00 goes to chain_poops.html (NetCTRL).
-    // <= 12.02 goes to chain_lapse.html (lapse).
+    // Firmwares this build has a MEASURED kernel table for. jb.js still runs its
+    // own kernel-table-present gate, so this is UX only -- an unlisted firmware
+    // can still be launched with a tap. KEEP IN SYNC with ps4_offsets.js: add a
+    // fwnum here in the SAME commit that fills that firmware's kernel RVAs.
     // The PS4 reports its minor as two hex digits in the UA (13.52 -> minor 0x52).
-    var SUPPORTED = {
-        1100: 1, 1150: 1, 1200: 1, 1202: 1,
-        1250: 1, 1252: 1, 1300: 1,
-        1302: 1, 1304: 1, 1350: 1, 1352: 1
-    };
+    var SUPPORTED = { 1302: 1, 1304: 1, 1350: 1, 1352: 1 }; // all measured on hardware
 
     var key = null, fwnum = null;
     var m = /PlayStation\s+4[\/ ](\d+)\.(\d+)/.exec(navigator.userAgent);
@@ -254,24 +264,18 @@
         fwnum = parseInt(m[1], 10) * 100 + parseInt(ms, 10);
     }
 
-    function chainFor(fw) {
-        if (fw === null) return { page: "chain_poops.html", label: "NetCTRL" };
-        if (fw >= 1302)  return { page: "jb.html",           label: "JB 13.52" };
-        if (fw <= 1202)  return { page: "chain_lapse.html",  label: "lapse" };
-        return                  { page: "chain_poops.html",  label: "NetCTRL" };
-    }
-
     var forced = params.get("force") === "1";
     var supported = forced || (fwnum !== null && SUPPORTED[fwnum] === 1);
-    var route = chainFor(fwnum);
     detEl.innerHTML = "firmware <b>" + (key || "unknown") + "</b>"
-        + (supported
-            ? " &middot; <b>supported</b> &middot; chain <b>" + route.label + "</b>"
-            : " &middot; not in this build's table");
+        + (supported ? " &middot; <b>supported</b>"
+                     : " &middot; not in this build's kernel table");
 
-    var target = route.page + location.search;
+    var target = "jb.html" + location.search;
 
-    // ---- one launch path. Nothing navigates without an explicit press. ----
+    // ---- One and only one launch path. Nothing navigates without an
+    //      explicit press. There is also a short arming delay so a stray
+    //      click / keydown that the PS4 browser fires right after load
+    //      cannot auto-launch the exploit.
     var launched = false;
     var armed = false;
     var ARM_DELAY_MS = 700;
@@ -287,13 +291,16 @@
             if (!armed) return;
             if (launched) return;
             launched = true;
+
             window.removeEventListener("click",     fire, true);
             window.removeEventListener("keydown",   fire, true);
             window.removeEventListener("touchend",  fire, true);
             window.removeEventListener("pointerup", fire, true);
+
             setPrompt("");
             action();
         }
+
         window.addEventListener("click",     fire, true);
         window.addEventListener("keydown",   fire, true);
         window.addEventListener("touchend",  fire, true);
@@ -301,7 +308,7 @@
     }
 
     function go() {
-        setState("loading " + route.label + "...", "warn");
+        setState("loading jailbreak...", "warn");
         setPrompt("");
         location.replace(target);
     }
