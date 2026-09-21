@@ -112,7 +112,6 @@
   body.fail .brand-run  { display:none; }
   body.fail .brand-fail { display:inline; }
 
-  /* ---- status circle (spinner / check / X) ---- */
   #status{
     position:relative;
     width:64px;
@@ -161,7 +160,6 @@
   body.fail #msg .msg-run { display:none; }
   body.fail #msg .msg-fail{ display:block; }
 
-  /* ---- log view (only when jb.js sets body.log via ?log=1) ---- */
   #wrap{ display:none; position:relative; z-index:1; }
 
   body.log{ align-items:flex-start; }
@@ -224,7 +222,7 @@
     overscroll-behavior:contain;
   }
 
-  /* ---- full-screen success video (plays once, never loops) ---- */
+  /* ---- full-screen success video ---- */
   #success-video{
     position:fixed;
     top:0; left:0;
@@ -242,12 +240,8 @@
     display:block;
     pointer-events:auto;
   }
-  /* Card gets hidden only when the video is ACTUALLY rendering.
-     If the video fails, body.video-active never fires and the
-     checkmark stays visible as a fallback. */
   body.video-active #card{ display:none !important; }
 
-  /* "Tap for sound" pill */
   #sound-hint{
     position:fixed;
     bottom:calc(24px + env(safe-area-inset-bottom));
@@ -315,7 +309,7 @@
 
     <div id="msg">
       <div class="msg-run">Do not close this page</div>
-      <div class="msg-done">Restart your console (Do Not ReRun!)</div>
+      <div class="msg-done">Jailbreak complete &mdash; restart your console (do not re-run)</div>
       <div class="msg-fail">Restart your console and try again</div>
     </div>
 
@@ -344,17 +338,16 @@
       var video      = document.getElementById("success-video");
       var outEl      = document.getElementById("out");
 
-      var started    = false;   // has body.video-active been applied
-      var playing    = false;   // is the video currently rendering
-      var finished   = false;   // has the video ended
-      var counted    = false;   // have we already bumped the counter
+      var started    = false;
+      var playing    = false;
+      var finished   = false;
+      var counted    = false;
       var lastPlay   = 0;
 
       function hasClass(c){ try { return document.body.classList.contains(c); } catch (e) { return false; } }
       function addClass(c){ try { document.body.classList.add(c); } catch (e) {} }
       function removeClass(c){ try { document.body.classList.remove(c); } catch (e) {} }
 
-      // ---- counter (localStorage) ----
       function bumpStats(ok) {
         if (counted) return;
         counted = true;
@@ -368,7 +361,6 @@
         } catch (e) {}
       }
 
-      // ---- sound helpers ----
       function showSoundHint(){ addClass("video-muted"); }
       function hideSoundHint(){ removeClass("video-muted"); }
       function tryUnmute() {
@@ -379,7 +371,13 @@
         }, 300);
       }
 
-      // ---- play (once, with autoplay-safe audio fallback) ----
+      // Revert to the card (check mark + message) if the video can't
+      // actually play. Never leave the user staring at a black rectangle.
+      function revertToCard() {
+        removeClass("video-active");
+        removeClass("video-muted");
+      }
+
       function tryPlay() {
         if (finished) return;
         lastPlay = Date.now();
@@ -388,7 +386,8 @@
         var p;
         try { p = video.play(); }
         catch (e) {
-          try { video.muted = true; video.play(); showSoundHint(); } catch (e2) {}
+          try { video.muted = true; video.play(); showSoundHint(); }
+          catch (e2) { revertToCard(); }
           return;
         }
         if (p && typeof p.then === "function") {
@@ -396,50 +395,57 @@
            .catch(function () {
               try { video.muted = true; } catch (e) {}
               var q;
-              try { q = video.play(); } catch (e) { showSoundHint(); return; }
+              try { q = video.play(); }
+              catch (e) { revertToCard(); return; }
               if (q && typeof q.then === "function") {
                 q.then(function () { tryUnmute(); })
-                 .catch(function () { showSoundHint(); });
-              } else { showSoundHint(); }
+                 .catch(function () { revertToCard(); });
+              } else {
+                tryUnmute();
+              }
            });
         }
       }
 
-      // ---- video events ----
       video.addEventListener("playing", function () {
         if (!playing) {
           playing = true;
-          // Now that a frame is actually on screen, reveal the video
-          // and hide the card.
           addClass("video-active");
         }
         if (video.muted) tryUnmute();
         else hideSoundHint();
       });
 
+      video.addEventListener("error", function () {
+        // File missing, codec unsupported, or network fetch failed.
+        // Fall back to the card so the user sees the success state.
+        revertToCard();
+      });
+
       video.addEventListener("ended", function () {
         finished = true;
-        // Hold the last frame; never replay.
         try { video.pause(); } catch (e) {}
       });
 
-      // Any tap while the video is playing unmutes it if it's muted.
       document.addEventListener("click", function () {
         if (!playing || finished) return;
         if (video.muted) tryUnmute();
       }, true);
 
-      // Preload early so the first frame is ready when we need it.
       try { video.preload = "auto"; video.load(); } catch (e) {}
 
+      // ----- THE FIX -----
+      // Make the video element visible in the render tree BEFORE play().
+      // On PS4 WebKit, play() called on a display:none <video> never fires
+      // the "playing" event, which was leaving the video invisible forever.
       function start() {
         if (started) return;
         started = true;
+        addClass("video-active");     // <-- first
         try { video.currentTime = 0; } catch (e) {}
-        tryPlay();
+        tryPlay();                    // <-- then play
       }
 
-      // ---- detect success / failure, count once, start video on success ----
       function evaluate() {
         if (hasClass("done")) {
           bumpStats(true);
@@ -450,7 +456,6 @@
           bumpStats(false);
           return;
         }
-        // ?log=1 path: jb.js never touches body.className, so read the log.
         if (outEl) {
           var txt = outEl.textContent || "";
           if (/PROOF-SUMMARY-FINAL/.test(txt)) {
@@ -458,7 +463,6 @@
               bumpStats(false);
             } else if (/PAYLOAD-RUNNING/.test(txt) || /PROOF-OK\s+PAYLOAD-RUNNING/.test(txt)) {
               bumpStats(true);
-              // Don't play the video in log mode -- user is reading logs.
               if (!hasClass("log")) start();
             }
           }
@@ -479,12 +483,13 @@
       }
       evaluate();
 
-      // Watchdog: retry play ONLY if the video hasn't finished yet AND we
-      // haven't started playing. Once ended, we never touch it again.
       setInterval(function () {
         evaluate();
         if (finished || video.ended) { finished = true; return; }
-        if (hasClass("done") && !playing && Date.now() - lastPlay > 3000) {
+        // Retry only if the video is actually paused (not just because
+        // the "playing" event hasn't fired yet).
+        if (hasClass("done") && !playing && video.paused &&
+            Date.now() - lastPlay > 3000) {
           tryPlay();
         }
       }, 4000);
