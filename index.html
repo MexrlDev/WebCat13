@@ -128,7 +128,6 @@
   }
   #prompt.show{ display:block; animation: pulse 1.6s ease-in-out infinite; }
 
-  /* ---- stats panel ---- */
   #stats{
     margin-top:14px;
     padding-top:12px;
@@ -221,7 +220,7 @@
         else   { promptEl.textContent = ""; promptEl.classList.remove("show"); }
     }
 
-    // ---- read counter from localStorage ----
+    // ---- stats from localStorage ----
     (function loadStats() {
         var success = 0, failed = 0;
         try {
@@ -234,10 +233,8 @@
                 }
             }
         } catch (e) {}
-
         var total = success + failed;
         var stability = total > 0 ? Math.round((success / total) * 100) : null;
-
         var sEl = document.getElementById("stat-success");
         var fEl = document.getElementById("stat-failed");
         var tEl = document.getElementById("stat-stability");
@@ -248,12 +245,8 @@
 
     var params = new URLSearchParams(location.search);
 
-    // Firmwares this build has a MEASURED kernel table for. jb.js still runs its
-    // own kernel-table-present gate, so this is UX only -- an unlisted firmware
-    // can still be launched with a tap. KEEP IN SYNC with ps4_offsets.js: add a
-    // fwnum here in the SAME commit that fills that firmware's kernel RVAs.
-    // The PS4 reports its minor as two hex digits in the UA (13.52 -> minor 0x52).
-    var SUPPORTED = { 1302: 1, 1304: 1, 1350: 1, 1352: 1 }; // all measured on hardware
+    // Firmwares with measured kernel tables. Keep in sync with ps4_offsets.js.
+    var SUPPORTED = { 1302: 1, 1304: 1, 1350: 1, 1352: 1 };
 
     var key = null, fwnum = null;
     var m = /PlayStation\s+4[\/ ](\d+)\.(\d+)/.exec(navigator.userAgent);
@@ -272,10 +265,7 @@
 
     var target = "jb.html" + location.search;
 
-    // ---- One and only one launch path. Nothing navigates without an
-    //      explicit press. There is also a short arming delay so a stray
-    //      click / keydown that the PS4 browser fires right after load
-    //      cannot auto-launch the exploit.
+    // ---- one-shot launch guard ----
     var launched = false;
     var armed = false;
     var ARM_DELAY_MS = 700;
@@ -319,45 +309,84 @@
         return;
     }
 
+    // ---- cache gate -----------------------------------------------------
+    // The launch is only armed once the offline cache is fully ready.
+    // This prevents the "payload didn't load because payload2.bin wasn't
+    // cached yet" failure after the user clears browser cache.
     var ac = window.applicationCache;
+    var cacheArmed = false;
+    var cacheTimer = null;
+
+    function armLaunch(msg) {
+        if (cacheArmed) return;
+        cacheArmed = true;
+        if (cacheTimer) { clearTimeout(cacheTimer); cacheTimer = null; }
+        waitForTap(msg || "READY", go);
+    }
+
     if (!ac || !document.documentElement.hasAttribute("manifest")) {
-        waitForTap("READY", go);
+        armLaunch("READY");
     } else if (!navigator.onLine) {
         setCache("offline -- from cache", true);
-        waitForTap("READY (offline)", go);
+        armLaunch("READY (offline)");
     } else if (ac.status === ac.IDLE) {
         setCache("cached", true);
-        waitForTap("READY", go);
+        armLaunch("READY");
     } else if (ac.status === ac.UPDATEREADY) {
         try { ac.swapCache(); } catch (e) {}
-        setCache("update downloaded", true);
-        waitForTap("UPDATE READY", function () { location.reload(); });
+        setCache("update downloaded -- reloading", true);
+        setState("applying update...", "warn");
+        setTimeout(function () { location.reload(); }, 400);
     } else {
-        setCache("checking cache...");
-        ac.addEventListener("downloading",
-            function () { setCache("caching for offline (first run)..."); }, false);
+        // Cache is mid-install (downloading / checking / obsolete).
+        // Show progress, do NOT arm yet.
+        setCache("caching for offline (first run)...");
+        setState("preparing offline cache...", "warn");
+        setPrompt("Please wait — files are downloading");
+
+        ac.addEventListener("downloading", function () {
+            setCache("caching for offline (first run)...");
+        }, false);
         ac.addEventListener("progress", function (e) {
-            if (e && e.total)
-                setCache("caching " + Math.round((e.loaded / e.total) * 100) + "%");
+            if (e && e.total) {
+                var pct = Math.round((e.loaded / e.total) * 100);
+                setCache("caching " + pct + "%");
+            }
         }, false);
         ac.addEventListener("cached", function () {
             setCache("cached for offline use", true);
+            setPrompt("");
+            armLaunch("READY");
         }, false);
         ac.addEventListener("updateready", function () {
             try { ac.swapCache(); } catch (e) {}
-            setCache("update downloaded", true);
+            setCache("update downloaded -- reloading", true);
+            setTimeout(function () { location.reload(); }, 400);
         }, false);
         ac.addEventListener("noupdate", function () {
             setCache("cached -- offline ready", true);
+            setPrompt("");
+            armLaunch("READY");
         }, false);
         ac.addEventListener("error", function () {
-            setCache("cache unavailable");
+            setCache("cache failed -- running from network");
+            setPrompt("");
+            armLaunch("READY (no cache)");
         }, false);
         ac.addEventListener("obsolete", function () {
-            setCache("cache obsolete");
+            setCache("cache obsolete -- running now");
+            setPrompt("");
+            armLaunch("READY (obsolete)");
         }, false);
 
-        waitForTap("READY", go);
+        // Timeout fallback: if the manifest stalls (silent failure),
+        // let the user launch anyway after 45 seconds.
+        cacheTimer = setTimeout(function () {
+            if (cacheArmed) return;
+            setCache("cache timeout -- running from network");
+            setPrompt("");
+            armLaunch("READY (timeout)");
+        }, 45000);
     }
 })();
 </script>
