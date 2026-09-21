@@ -220,7 +220,6 @@
         else   { promptEl.textContent = ""; promptEl.classList.remove("show"); }
     }
 
-    // ---- stats from localStorage ----
     (function loadStats() {
         var success = 0, failed = 0;
         try {
@@ -245,7 +244,6 @@
 
     var params = new URLSearchParams(location.search);
 
-    // Firmwares with measured kernel tables. Keep in sync with ps4_offsets.js.
     var SUPPORTED = { 1302: 1, 1304: 1, 1350: 1, 1352: 1 };
 
     var key = null, fwnum = null;
@@ -265,7 +263,6 @@
 
     var target = "jb.html" + location.search;
 
-    // ---- one-shot launch guard ----
     var launched = false;
     var armed = false;
     var ARM_DELAY_MS = 700;
@@ -309,10 +306,6 @@
         return;
     }
 
-    // ---- cache gate -----------------------------------------------------
-    // The launch is only armed once the offline cache is fully ready.
-    // This prevents the "payload didn't load because payload2.bin wasn't
-    // cached yet" failure after the user clears browser cache.
     var ac = window.applicationCache;
     var cacheArmed = false;
     var cacheTimer = null;
@@ -338,8 +331,6 @@
         setState("applying update...", "warn");
         setTimeout(function () { location.reload(); }, 400);
     } else {
-        // Cache is mid-install (downloading / checking / obsolete).
-        // Show progress, do NOT arm yet.
         setCache("caching for offline (first run)...");
         setState("preparing offline cache...", "warn");
         setPrompt("Please wait — files are downloading");
@@ -379,8 +370,6 @@
             armLaunch("READY (obsolete)");
         }, false);
 
-        // Timeout fallback: if the manifest stalls (silent failure),
-        // let the user launch anyway after 45 seconds.
         cacheTimer = setTimeout(function () {
             if (cacheArmed) return;
             setCache("cache timeout -- running from network");
