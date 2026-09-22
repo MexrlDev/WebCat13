@@ -9,9 +9,6 @@
 
   html{ height:100%; background:#08090c; }
 
-  /* Background photo + vignette. Both are killed the instant we enter
-     video mode, because a fixed-position compositing layer stacked
-     beneath a playing video makes PS4 WebKit render the video black. */
   html::before{
     content:"";
     position:fixed; inset:0;
@@ -26,9 +23,6 @@
     z-index:-1;
     pointer-events:none;
   }
-  html.video-mode::before,
-  html.video-mode::after{ display:none !important; }
-  html.video-mode{ background:#000 !important; }
 
   body{
     margin:0;
@@ -44,12 +38,6 @@
     color:#eef2f7;
     font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
-  }
-  body.video-mode{
-    padding:0 !important;
-    display:block !important;
-    background:#000 !important;
-    min-height:100vh !important;
   }
 
   #card{
@@ -75,10 +63,6 @@
     pointer-events:none;
     background:linear-gradient(180deg,
       rgba(255,255,255,.08), rgba(255,255,255,0) 45%);
-  }
-  body.video-mode #card{
-    display:none !important;
-    animation:none !important;
   }
 
   #brand{
@@ -150,6 +134,7 @@
   }
   .status-check{ color:#7ff0b8; filter: drop-shadow(0 0 14px rgba(127,240,184,.55)); }
   .status-fail { color:#ff9d9d; filter: drop-shadow(0 0 14px rgba(255,120,120,.55)); }
+
   body.done #spinner{ display:none; }
   body.done .status-check{ display:block; }
   body.fail #spinner{ display:none; }
@@ -165,12 +150,14 @@
   #msg .msg-run  { display:block; color:rgba(238,242,247,.70); }
   #msg .msg-done { display:none;  color:#7ff0b8; text-shadow:0 0 24px rgba(127,240,184,.45); }
   #msg .msg-fail { display:none;  color:#ff9d9d; text-shadow:0 0 24px rgba(255,120,120,.45); }
+
   body.done #msg .msg-run { display:none; }
   body.done #msg .msg-done{ display:block; }
   body.fail #msg .msg-run { display:none; }
   body.fail #msg .msg-fail{ display:block; }
 
   #wrap{ display:none; position:relative; z-index:1; }
+
   body.log{ align-items:flex-start; }
   body.log #status,
   body.log #msg{ display:none !important; }
@@ -189,6 +176,7 @@
     padding:16px 18px;
     gap:12px;
   }
+
   #state{
     display:none;
     font-size:17px;
@@ -212,6 +200,7 @@
     box-shadow:0 0 12px currentColor;
     animation: pulse 1.6s ease-in-out infinite;
   }
+
   #out{
     flex:1;
     min-height:0;
@@ -229,43 +218,6 @@
     overscroll-behavior:contain;
   }
 
-  /* ---- VIDEO ----
-     Inline styles get applied from JS the moment we go into video mode.
-     These defaults keep it alive in the compositor while the card is up. */
-  #success-video{
-    position:fixed;
-    top:0; left:0;
-    width:100vw; height:100vh;
-    object-fit:contain;
-    background:#000;
-    z-index:-5;
-    opacity:0;
-    display:block;
-    pointer-events:none;
-    -webkit-user-select:none;
-    user-select:none;
-  }
-
-  #sound-hint{
-    position:fixed;
-    bottom:calc(24px + env(safe-area-inset-bottom));
-    left:50%;
-    transform: translateX(-50%);
-    padding:10px 18px;
-    border-radius:999px;
-    background:rgba(0,0,0,.68);
-    color:#fff;
-    font-size:13px;
-    letter-spacing:.02em;
-    z-index:2147483647;
-    display:none;
-    pointer-events:none;
-    -webkit-backdrop-filter: blur(8px);
-            backdrop-filter: blur(8px);
-    box-shadow: 0 4px 16px rgba(0,0,0,.4);
-  }
-  body.video-muted #sound-hint{ display:block; animation: pulse 1.6s ease-in-out infinite; }
-
   @keyframes spin{ to { transform: rotate(360deg); } }
   @keyframes rise{
     from{ opacity:0; transform:translateY(12px) scale(.98); }
@@ -275,12 +227,12 @@
     0%,100%{ opacity:.55; }
     50%    { opacity:1; }
   }
+
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
     #card{ background:rgba(14,17,22,.78); }
   }
   @media (prefers-reduced-motion:reduce){
     #card, #spinner, #brand .dot, #state::before{ animation:none; }
-    body.video-muted #sound-hint{ animation:none; }
   }
 </style>
 </head>
@@ -322,35 +274,14 @@
     </div>
   </main>
 
-  <video id="success-video"
-         preload="auto"
-         playsinline
-         webkit-playsinline
-         x5-playsinline
-         disablepictureinpicture
-         disableremoteplayback
-         controlslist="nodownload nofullscreen noremoteplayback"
-         muted>
-    <source src="media/unshackled.mp4" type="video/mp4; codecs=&quot;avc1.42E01E, mp4a.40.2&quot;">
-    <source src="media/unshackled.mp4" type="video/mp4">
-  </video>
-
-  <div id="sound-hint">Tap for sound</div>
-
   <script>
     (function () {
       var STATS_KEY = "ps4-jb-stats-v1";
-      var video = document.getElementById("success-video");
 
-      var counted = false;
-      var started = false;
-      var playing = false;
-      var finished = false;
-      var failed  = false;
+      var counted  = false;
+      var redirect = false;
 
-      function hasClass(c, el){ try { return (el||document.body).classList.contains(c); } catch (e) { return false; } }
-      function addClass(c, el){ try { (el||document.body).classList.add(c); } catch (e) {} }
-      function removeClass(c, el){ try { (el||document.body).classList.remove(c); } catch (e) {} }
+      function hasClass(c){ try { return document.body.classList.contains(c); } catch (e) { return false; } }
 
       function bumpStats(ok) {
         if (counted) return;
@@ -369,135 +300,36 @@
         } catch (e) {}
       }
 
-      function showSoundHint(){ addClass("video-muted"); }
-      function hideSoundHint(){ removeClass("video-muted"); }
-      function tryUnmute() {
-        try { video.muted = false; video.volume = 1.0; } catch (e) {}
+      // On success, show the checkmark briefly, then hand off to
+      // success.html which plays the video in complete isolation.
+      function goToSuccessVideo() {
+        if (redirect) return;
+        redirect = true;
         setTimeout(function () {
-          if (video.muted) showSoundHint();
-          else hideSoundHint();
-        }, 300);
-      }
-
-      // Fallback if the video truly can't play. Rebuild the card view.
-      function fallbackToCard() {
-        if (failed) return;
-        failed = true;
-        try { video.pause(); } catch (e) {}
-        removeClass("video-mode", document.documentElement);
-        removeClass("video-mode");
-        removeClass("video-muted");
-        // Reinstate the done state visuals.
-        if (hasClass("done") || hasClass("log")) {
-          addClass("done");
-        }
-      }
-
-      function tryPlay() {
-        if (finished || failed) return;
-
-        // First attempt: unmuted. PS4 WebKit allows unmuted autoplay when
-        // the page was entered via a user gesture (which it was, since the
-        // user pressed X on index.html to launch jb.html).
-        try { video.muted = false; video.volume = 1.0; } catch (e) {}
-
-        var p;
-        try { p = video.play(); }
-        catch (e) {
-          // Synchronous throw -- fall back to muted play.
-          try { video.muted = true; video.play(); showSoundHint(); }
-          catch (e2) { fallbackToCard(); }
-          return;
-        }
-        if (p && typeof p.then === "function") {
-          p.catch(function () {
-            // Autoplay-with-sound was rejected. Start muted then unmute.
-            try { video.muted = true; } catch (e) {}
-            var q;
-            try { q = video.play(); }
-            catch (e) { fallbackToCard(); return; }
-            if (q && typeof q.then === "function") {
-              q.then(function () { tryUnmute(); })
-               .catch(function () { fallbackToCard(); });
-            }
-          });
-        }
-      }
-
-      video.addEventListener("playing", function () {
-        playing = true;
-        if (video.muted) tryUnmute();
-      });
-      video.addEventListener("error", function () { fallbackToCard(); });
-      video.addEventListener("ended", function () {
-        finished = true;
-        try { video.pause(); } catch (e) {}
-      });
-
-      document.addEventListener("click", function () {
-        if (!started || finished) return;
-        if (video.muted) tryUnmute();
-      }, true);
-
-      try { video.load(); } catch (e) {}
-
-      // ---- THE FIX ----
-      function startVideo() {
-        if (started) return;
-        started = true;
-
-        // 1. Nuke every compositing layer above / around the video.
-        addClass("video-mode", document.documentElement);
-        addClass("video-mode");
-
-        // 2. Give the video explicit inline styles. Inline wins over
-        //    stylesheet rules so nothing can interfere with the layout
-        //    the compositor needs.
-        video.style.position = "fixed";
-        video.style.top = "0";
-        video.style.left = "0";
-        video.style.width = "100vw";
-        video.style.height = "100vh";
-        video.style.objectFit = "contain";
-        video.style.background = "#000";
-        video.style.zIndex = "2147483647";
-        video.style.opacity = "1";
-        video.style.display = "block";
-        video.style.visibility = "visible";
-        video.style.pointerEvents = "auto";
-
-        // 3. Force a layout flush so the browser actually sees a painted
-        //    full-screen video before we ask it to play.
-        void video.offsetWidth;
-        void document.body.offsetWidth;
-
-        // 4. Double rAF: wait for layout + paint, THEN play.
-        var playNow = function () {
-          try { video.currentTime = 0; } catch (e) {}
-          tryPlay();
-
-          // Watchdog: if nothing has started after 6 s, give up.
-          setTimeout(function () {
-            if (!playing && !finished) fallbackToCard();
-          }, 6000);
-        };
-
-        requestAnimationFrame(function () {
-          requestAnimationFrame(playNow);
-        });
+          try { location.replace("success.html"); } catch (e) {}
+        }, 900);
       }
 
       function evaluate() {
-        if (hasClass("done")) { bumpStats(true); startVideo(); return; }
-        if (hasClass("fail")) { bumpStats(false); return; }
+        if (hasClass("done")) {
+          bumpStats(true);
+          // In log mode, don't redirect -- the user is reading the log.
+          if (!hasClass("log")) goToSuccessVideo();
+          return;
+        }
+        if (hasClass("fail")) {
+          bumpStats(false);
+          return;
+        }
         var outEl = document.getElementById("out");
         if (outEl) {
           var txt = outEl.textContent || "";
           if (/PROOF-SUMMARY-FINAL/.test(txt)) {
-            if (/INCOMPLETE/.test(txt)) { bumpStats(false); }
-            else if (/PAYLOAD-RUNNING/.test(txt) || /PROOF-OK\s+PAYLOAD-RUNNING/.test(txt)) {
+            if (/INCOMPLETE/.test(txt)) {
+              bumpStats(false);
+            } else if (/PAYLOAD-RUNNING/.test(txt) || /PROOF-OK\s+PAYLOAD-RUNNING/.test(txt)) {
               bumpStats(true);
-              if (!hasClass("log")) startVideo();
+              if (!hasClass("log")) goToSuccessVideo();
             }
           }
         }
@@ -517,17 +349,6 @@
         } catch (e) {}
       }
       evaluate();
-
-      setInterval(function () {
-        evaluate();
-        if (finished || video.ended) { finished = true; return; }
-        if (started && !playing && video.paused && !failed) tryPlay();
-      }, 4000);
-
-      video.addEventListener("contextmenu", function (e) {
-        e.preventDefault();
-        return false;
-      });
     })();
   </script>
   <script type="module">
