@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en" manifest="cache.appcache">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Jailbreak Complete</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    overflow: hidden;
+  }
+  #v {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: contain;
+    background: #000;
+    display: block;
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+</style>
+</head>
+<body>
+  <video id="v"
+         src="media/unshackled.mp4"
+         autoplay
+         muted
+         playsinline
+         webkit-playsinline
+         x5-playsinline
+         preload="auto"
+         disablepictureinpicture
+         disableremoteplayback
+         controlslist="nodownload nofullscreen noremoteplayback"></video>
+
+  <script>
+    (function () {
+      var v = document.getElementById("v");
+
+      // Start muted (always allowed), unmute as soon as playback begins.
+      function unmute() {
+        try { v.muted = false; v.volume = 1.0; } catch (e) {}
+      }
+
+      v.addEventListener("playing", function () {
+        // Give it one tick, then try to bring the sound in.
+        setTimeout(unmute, 120);
+      });
+
+      // Any tap unmutes an already-playing muted video.
+      document.addEventListener("click", function () {
+        if (!v.muted) return;
+        unmute();
+      }, true);
+
+      // Kick off playback as soon as the page loads.
+      var p;
+      try { p = v.play(); } catch (e) {}
+      if (p && typeof p.then === "function") {
+        p.catch(function () {
+          // Even muted playback got rejected; retry once on any tap.
+          document.addEventListener("click", function () {
+            try { v.play(); } catch (e) {}
+          }, { once: true });
+        });
+      }
+
+      // Hold on the last frame when finished (default behavior, nothing to do).
+    })();
+  </script>
+</body>
+</html>
