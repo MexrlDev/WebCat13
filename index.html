@@ -220,7 +220,6 @@
     })();
 
     var params = new URLSearchParams(location.search);
-
     var SUPPORTED = { 1302: 1, 1304: 1, 1350: 1, 1352: 1 };
 
     var key = null, fwnum = null;
@@ -231,7 +230,6 @@
         key = m[1] + "." + ms;
         fwnum = parseInt(m[1], 10) * 100 + parseInt(ms, 10);
     }
-
     var forced = params.get("force") === "1";
     var supported = forced || (fwnum !== null && SUPPORTED[fwnum] === 1);
     detEl.innerHTML = "firmware <b>" + (key || "unknown") + "</b>"
@@ -240,9 +238,10 @@
 
     var target = "jb.html" + location.search;
 
+    // ---- launch is only ever triggered by an explicit user press ----
     var launched = false;
     var armed = false;
-    var ARM_DELAY_MS = 700;
+    var ARM_DELAY_MS = 2000;    // long arming delay swallows stray events
 
     function waitForTap(msg, action) {
         setState(msg, "warn");
@@ -251,24 +250,24 @@
         armed = false;
         setTimeout(function () { armed = true; }, ARM_DELAY_MS);
 
-        function fire(ev) {
-            if (!armed) return;
-            if (launched) return;
+        function fire() {
+            if (!armed) return;      // ignore any events before arming
+            if (launched) return;    // only once
             launched = true;
 
-            window.removeEventListener("click",     fire, true);
-            window.removeEventListener("keydown",   fire, true);
-            window.removeEventListener("touchend",  fire, true);
             window.removeEventListener("pointerup", fire, true);
+            window.removeEventListener("keydown",   fire, true);
+            window.removeEventListener("click",     fire, true);
+            window.removeEventListener("touchend",  fire, true);
 
             setPrompt("");
             action();
         }
 
-        window.addEventListener("click",     fire, true);
-        window.addEventListener("keydown",   fire, true);
-        window.addEventListener("touchend",  fire, true);
         window.addEventListener("pointerup", fire, true);
+        window.addEventListener("keydown",   fire, true);
+        window.addEventListener("click",     fire, true);
+        window.addEventListener("touchend",  fire, true);
     }
 
     function go() {
@@ -283,14 +282,16 @@
         return;
     }
 
+    // ---- cache gate ----
+    // Nothing navigates on its own. The only path from this page to jb.html
+    // is through waitForTap() above, and that only fires on a real key or
+    // pointer event after the arming delay.
     var ac = window.applicationCache;
     var cacheArmed = false;
-    var cacheTimer = null;
 
     function armLaunch(msg) {
         if (cacheArmed) return;
         cacheArmed = true;
-        if (cacheTimer) { clearTimeout(cacheTimer); cacheTimer = null; }
         waitForTap(msg || "READY", go);
     }
 
@@ -303,11 +304,26 @@
         setCache("cached", true);
         armLaunch("READY");
     } else if (ac.status === ac.UPDATEREADY) {
-        try { ac.swapCache(); } catch (e) {}
-        setCache("update downloaded -- reloading", true);
-        setState("applying update...", "warn");
-        setTimeout(function () { location.reload(); }, 400);
+        // Update available. Do NOT auto-reload; ask the user to tap.
+        setCache("update ready -- press X to apply", true);
+        setState("update ready", "warn");
+        setPrompt("Press X or tap to apply update");
+
+        var updateFired = false;
+        function doUpdate() {
+            if (updateFired) return;
+            updateFired = true;
+            try { ac.swapCache(); } catch (e) {}
+            setTimeout(function () { location.reload(); }, 300);
+        }
+        // Short arming delay too, so a stray event can't update.
+        setTimeout(function () {
+            window.addEventListener("pointerup", doUpdate, true);
+            window.addEventListener("keydown",   doUpdate, true);
+            window.addEventListener("click",     doUpdate, true);
+        }, ARM_DELAY_MS);
     } else {
+        // Cache is mid-install. Show progress and DO NOT arm yet.
         setCache("caching for offline (first run)...");
         setState("preparing offline cache...", "warn");
         setPrompt("Please wait — files are downloading");
@@ -327,9 +343,20 @@
             armLaunch("READY");
         }, false);
         ac.addEventListener("updateready", function () {
-            try { ac.swapCache(); } catch (e) {}
-            setCache("update downloaded -- reloading", true);
-            setTimeout(function () { location.reload(); }, 400);
+            setCache("update ready -- reload required", true);
+            setState("update ready", "warn");
+            setPrompt("Press X or tap to reload");
+            var done = false;
+            function reloadNow() {
+                if (done) return; done = true;
+                try { ac.swapCache(); } catch (e) {}
+                setTimeout(function () { location.reload(); }, 300);
+            }
+            setTimeout(function () {
+                window.addEventListener("pointerup", reloadNow, true);
+                window.addEventListener("keydown",   reloadNow, true);
+                window.addEventListener("click",     reloadNow, true);
+            }, ARM_DELAY_MS);
         }, false);
         ac.addEventListener("noupdate", function () {
             setCache("cached -- offline ready", true);
@@ -347,12 +374,13 @@
             armLaunch("READY (obsolete)");
         }, false);
 
-        cacheTimer = setTimeout(function () {
+        // Timeout fallback if the manifest stalls silently.
+        setTimeout(function () {
             if (cacheArmed) return;
             setCache("cache timeout -- running from network");
             setPrompt("");
             armLaunch("READY (timeout)");
-        }, 45000);
+        }, 60000);
     }
 })();
 </script>
