@@ -1,8 +1,9 @@
 CACHE MANIFEST
-# rev 20260923-compositor-kill-and-trusted-events
+# rev 20260922-isolated-video-page
 
 index.html
 jb.html
+success.html
 
 jb.js
 jb.js?v=10
