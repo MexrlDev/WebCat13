@@ -6,7 +6,12 @@
 <title>Jailbreak</title>
 <style>
   *{ box-sizing:border-box; }
+
   html{ height:100%; background:#08090c; }
+
+  /* Background photo + vignette. Both are killed the instant we enter
+     video mode, because a fixed-position compositing layer stacked
+     beneath a playing video makes PS4 WebKit render the video black. */
   html::before{
     content:"";
     position:fixed; inset:0;
@@ -21,6 +26,10 @@
     z-index:-1;
     pointer-events:none;
   }
+  html.video-mode::before,
+  html.video-mode::after{ display:none !important; }
+  html.video-mode{ background:#000 !important; }
+
   body{
     margin:0;
     min-height:100vh;
@@ -36,6 +45,13 @@
     font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
+  body.video-mode{
+    padding:0 !important;
+    display:block !important;
+    background:#000 !important;
+    min-height:100vh !important;
+  }
+
   #card{
     position:relative;
     z-index:10;
@@ -60,6 +76,11 @@
     background:linear-gradient(180deg,
       rgba(255,255,255,.08), rgba(255,255,255,0) 45%);
   }
+  body.video-mode #card{
+    display:none !important;
+    animation:none !important;
+  }
+
   #brand{
     position:relative;
     display:flex;
@@ -103,6 +124,7 @@
   body.done .brand-done { display:inline; }
   body.fail .brand-run  { display:none; }
   body.fail .brand-fail { display:inline; }
+
   #status{
     position:relative;
     width:64px;
@@ -132,6 +154,7 @@
   body.done .status-check{ display:block; }
   body.fail #spinner{ display:none; }
   body.fail .status-fail{ display:block; }
+
   #msg{
     display:block;
     text-align:center;
@@ -146,6 +169,7 @@
   body.done #msg .msg-done{ display:block; }
   body.fail #msg .msg-run { display:none; }
   body.fail #msg .msg-fail{ display:block; }
+
   #wrap{ display:none; position:relative; z-index:1; }
   body.log{ align-items:flex-start; }
   body.log #status,
@@ -205,50 +229,22 @@
     overscroll-behavior:contain;
   }
 
-  /* ---- SUCCESS VIDEO ----
-     Always in the compositor's view: real dimensions, display:block,
-     pointer-events:none, opacity:0, z-index:-1. The card sits on top.
-     On success we raise opacity and z-index, then play after a tiny
-     delay to let PS4 WebKit recognize the element is on-screen. */
+  /* ---- VIDEO ----
+     Inline styles get applied from JS the moment we go into video mode.
+     These defaults keep it alive in the compositor while the card is up. */
   #success-video{
     position:fixed;
     top:0; left:0;
-    width:100vw;
-    height:100vh;
+    width:100vw; height:100vh;
+    object-fit:contain;
     background:#000;
-    z-index:-1;
+    z-index:-5;
     opacity:0;
     display:block;
     pointer-events:none;
     -webkit-user-select:none;
     user-select:none;
-    transition: opacity .18s linear;
   }
-  body.video-active #success-video{
-    opacity:1;
-    z-index:2147483647;
-    pointer-events:auto;
-  }
-  body.video-active #card{ display:none !important; }
-
-  /* Simple fallback message if the video can't decode */
-  #video-fallback{
-    position:fixed;
-    top:0; left:0;
-    width:100vw; height:100vh;
-    display:none;
-    align-items:center;
-    justify-content:center;
-    background:#000;
-    color:#7ff0b8;
-    font:600 20px/1.5 ui-sans-serif,system-ui,sans-serif;
-    letter-spacing:.06em;
-    text-align:center;
-    padding:20px;
-    z-index:2147483647;
-    pointer-events:none;
-  }
-  body.video-fallback #video-fallback{ display:flex; }
 
   #sound-hint{
     position:fixed;
@@ -284,7 +280,6 @@
   }
   @media (prefers-reduced-motion:reduce){
     #card, #spinner, #brand .dot, #state::before{ animation:none; }
-    #success-video{ transition:none; }
     body.video-muted #sound-hint{ animation:none; }
   }
 </style>
@@ -340,14 +335,12 @@
     <source src="media/unshackled.mp4" type="video/mp4">
   </video>
 
-  <div id="video-fallback">Jailbreak complete &mdash; restart your console</div>
   <div id="sound-hint">Tap for sound</div>
 
   <script>
     (function () {
       var STATS_KEY = "ps4-jb-stats-v1";
       var video = document.getElementById("success-video");
-      var outEl = document.getElementById("out");
 
       var counted = false;
       var started = false;
@@ -355,11 +348,10 @@
       var finished = false;
       var failed  = false;
 
-      function hasClass(c){ try { return document.body.classList.contains(c); } catch (e) { return false; } }
-      function addClass(c){ try { document.body.classList.add(c); } catch (e) {} }
-      function removeClass(c){ try { document.body.classList.remove(c); } catch (e) {} }
+      function hasClass(c, el){ try { return (el||document.body).classList.contains(c); } catch (e) { return false; } }
+      function addClass(c, el){ try { (el||document.body).classList.add(c); } catch (e) {} }
+      function removeClass(c, el){ try { (el||document.body).classList.remove(c); } catch (e) {} }
 
-      // ---- stats ----
       function bumpStats(ok) {
         if (counted) return;
         counted = true;
@@ -377,7 +369,6 @@
         } catch (e) {}
       }
 
-      // ---- sound ----
       function showSoundHint(){ addClass("video-muted"); }
       function hideSoundHint(){ removeClass("video-muted"); }
       function tryUnmute() {
@@ -388,46 +379,56 @@
         }, 300);
       }
 
-      // ---- fallback (video can't decode) ----
-      function fallbackToMessage() {
+      // Fallback if the video truly can't play. Rebuild the card view.
+      function fallbackToCard() {
         if (failed) return;
         failed = true;
         try { video.pause(); } catch (e) {}
-        removeClass("video-active");
+        removeClass("video-mode", document.documentElement);
+        removeClass("video-mode");
         removeClass("video-muted");
-        addClass("video-fallback");
+        // Reinstate the done state visuals.
+        if (hasClass("done") || hasClass("log")) {
+          addClass("done");
+        }
       }
 
-      // ---- play attempt ----
       function tryPlay() {
         if (finished || failed) return;
-        try { video.muted = true; } catch (e) {}
+
+        // First attempt: unmuted. PS4 WebKit allows unmuted autoplay when
+        // the page was entered via a user gesture (which it was, since the
+        // user pressed X on index.html to launch jb.html).
+        try { video.muted = false; video.volume = 1.0; } catch (e) {}
 
         var p;
         try { p = video.play(); }
-        catch (e) { fallbackToMessage(); return; }
-
+        catch (e) {
+          // Synchronous throw -- fall back to muted play.
+          try { video.muted = true; video.play(); showSoundHint(); }
+          catch (e2) { fallbackToCard(); }
+          return;
+        }
         if (p && typeof p.then === "function") {
           p.catch(function () {
-            // Some engines refuse even muted autoplay; try once more.
-            try {
-              video.muted = true;
-              var q = video.play();
-              if (q && typeof q.then === "function") {
-                q.catch(function () { fallbackToMessage(); });
-              }
-            } catch (e) { fallbackToMessage(); }
+            // Autoplay-with-sound was rejected. Start muted then unmute.
+            try { video.muted = true; } catch (e) {}
+            var q;
+            try { q = video.play(); }
+            catch (e) { fallbackToCard(); return; }
+            if (q && typeof q.then === "function") {
+              q.then(function () { tryUnmute(); })
+               .catch(function () { fallbackToCard(); });
+            }
           });
         }
       }
 
-      // ---- video events ----
       video.addEventListener("playing", function () {
         playing = true;
-        removeClass("video-fallback");
         if (video.muted) tryUnmute();
       });
-      video.addEventListener("error", function () { fallbackToMessage(); });
+      video.addEventListener("error", function () { fallbackToCard(); });
       video.addEventListener("ended", function () {
         finished = true;
         try { video.pause(); } catch (e) {}
@@ -438,59 +439,63 @@
         if (video.muted) tryUnmute();
       }, true);
 
-      // Kick off preload as early as possible.
       try { video.load(); } catch (e) {}
 
-      // ---- start the video on success ----
-      function playNow() {
-        try { video.currentTime = 0; } catch (e) {}
-        tryPlay();
-
-        // Watchdog: if nothing played in 8s, fall back to a text message.
-        setTimeout(function () {
-          if (!playing && !finished) fallbackToMessage();
-        }, 8000);
-      }
-
+      // ---- THE FIX ----
       function startVideo() {
         if (started) return;
         started = true;
 
-        // 1. Make the video visible in the render tree.
-        addClass("video-active");
+        // 1. Nuke every compositing layer above / around the video.
+        addClass("video-mode", document.documentElement);
+        addClass("video-mode");
 
-        // 2. Force a layout flush so the browser sees the video on-screen.
+        // 2. Give the video explicit inline styles. Inline wins over
+        //    stylesheet rules so nothing can interfere with the layout
+        //    the compositor needs.
+        video.style.position = "fixed";
+        video.style.top = "0";
+        video.style.left = "0";
+        video.style.width = "100vw";
+        video.style.height = "100vh";
+        video.style.objectFit = "contain";
+        video.style.background = "#000";
+        video.style.zIndex = "2147483647";
+        video.style.opacity = "1";
+        video.style.display = "block";
+        video.style.visibility = "visible";
+        video.style.pointerEvents = "auto";
+
+        // 3. Force a layout flush so the browser actually sees a painted
+        //    full-screen video before we ask it to play.
         void video.offsetWidth;
+        void document.body.offsetWidth;
 
-        // 3. If metadata is already loaded, wait a beat then play.
-        //    Otherwise wait for loadedmetadata, then play.
-        if (video.readyState >= 1) {
-          setTimeout(playNow, 120);
-        } else {
-          var fired = false;
-          function onMeta() { if (!fired) { fired = true; setTimeout(playNow, 120); } }
-          video.addEventListener("loadedmetadata", onMeta, { once: true });
-          setTimeout(onMeta, 2500);
-        }
+        // 4. Double rAF: wait for layout + paint, THEN play.
+        var playNow = function () {
+          try { video.currentTime = 0; } catch (e) {}
+          tryPlay();
+
+          // Watchdog: if nothing has started after 6 s, give up.
+          setTimeout(function () {
+            if (!playing && !finished) fallbackToCard();
+          }, 6000);
+        };
+
+        requestAnimationFrame(function () {
+          requestAnimationFrame(playNow);
+        });
       }
 
-      // ---- success / failure detection ----
       function evaluate() {
-        if (hasClass("done")) {
-          bumpStats(true);
-          startVideo();
-          return;
-        }
-        if (hasClass("fail")) {
-          bumpStats(false);
-          return;
-        }
+        if (hasClass("done")) { bumpStats(true); startVideo(); return; }
+        if (hasClass("fail")) { bumpStats(false); return; }
+        var outEl = document.getElementById("out");
         if (outEl) {
           var txt = outEl.textContent || "";
           if (/PROOF-SUMMARY-FINAL/.test(txt)) {
-            if (/INCOMPLETE/.test(txt)) {
-              bumpStats(false);
-            } else if (/PAYLOAD-RUNNING/.test(txt) || /PROOF-OK\s+PAYLOAD-RUNNING/.test(txt)) {
+            if (/INCOMPLETE/.test(txt)) { bumpStats(false); }
+            else if (/PAYLOAD-RUNNING/.test(txt) || /PROOF-OK\s+PAYLOAD-RUNNING/.test(txt)) {
               bumpStats(true);
               if (!hasClass("log")) startVideo();
             }
@@ -503,6 +508,7 @@
           attributes: true, attributeFilter: ["class"]
         });
       } catch (e) {}
+      var outEl = document.getElementById("out");
       if (outEl) {
         try {
           new MutationObserver(evaluate).observe(outEl, {
@@ -512,13 +518,10 @@
       }
       evaluate();
 
-      // Retry watchdog. Never fires after ended.
       setInterval(function () {
         evaluate();
         if (finished || video.ended) { finished = true; return; }
-        if (hasClass("video-active") && !playing && video.paused && !failed) {
-          tryPlay();
-        }
+        if (started && !playing && video.paused && !failed) tryPlay();
       }, 4000);
 
       video.addEventListener("contextmenu", function (e) {
