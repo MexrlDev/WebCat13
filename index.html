@@ -238,10 +238,10 @@
 
     var target = "jb.html" + location.search;
 
-    // ---- launch is only ever triggered by an explicit user press ----
+    // ---- the ONLY way out of this page is a real user press ----
     var launched = false;
     var armed = false;
-    var ARM_DELAY_MS = 2000;    // long arming delay swallows stray events
+    var ARM_DELAY_MS = 2500;    // 2.5 s -- longer than any synthetic event
 
     function waitForTap(msg, action) {
         setState(msg, "warn");
@@ -250,9 +250,13 @@
         armed = false;
         setTimeout(function () { armed = true; }, ARM_DELAY_MS);
 
-        function fire() {
-            if (!armed) return;      // ignore any events before arming
-            if (launched) return;    // only once
+        function fire(ev) {
+            // Reject synthetic events outright. PS4 WebKit sometimes fires
+            // a click or pointerup right after page load; isTrusted is
+            // false on those, so we never act on them.
+            if (!ev || ev.isTrusted !== true) return;
+            if (!armed) return;
+            if (launched) return;
             launched = true;
 
             window.removeEventListener("pointerup", fire, true);
@@ -282,10 +286,7 @@
         return;
     }
 
-    // ---- cache gate ----
-    // Nothing navigates on its own. The only path from this page to jb.html
-    // is through waitForTap() above, and that only fires on a real key or
-    // pointer event after the arming delay.
+    // ---- cache gate. Nothing navigates on its own. EVER. ----
     var ac = window.applicationCache;
     var cacheArmed = false;
 
@@ -304,26 +305,23 @@
         setCache("cached", true);
         armLaunch("READY");
     } else if (ac.status === ac.UPDATEREADY) {
-        // Update available. Do NOT auto-reload; ask the user to tap.
         setCache("update ready -- press X to apply", true);
         setState("update ready", "warn");
         setPrompt("Press X or tap to apply update");
-
         var updateFired = false;
-        function doUpdate() {
+        function doUpdate(ev) {
+            if (!ev || ev.isTrusted !== true) return;
             if (updateFired) return;
             updateFired = true;
             try { ac.swapCache(); } catch (e) {}
             setTimeout(function () { location.reload(); }, 300);
         }
-        // Short arming delay too, so a stray event can't update.
         setTimeout(function () {
             window.addEventListener("pointerup", doUpdate, true);
             window.addEventListener("keydown",   doUpdate, true);
             window.addEventListener("click",     doUpdate, true);
         }, ARM_DELAY_MS);
     } else {
-        // Cache is mid-install. Show progress and DO NOT arm yet.
         setCache("caching for offline (first run)...");
         setState("preparing offline cache...", "warn");
         setPrompt("Please wait — files are downloading");
@@ -347,7 +345,8 @@
             setState("update ready", "warn");
             setPrompt("Press X or tap to reload");
             var done = false;
-            function reloadNow() {
+            function reloadNow(ev) {
+                if (!ev || ev.isTrusted !== true) return;
                 if (done) return; done = true;
                 try { ac.swapCache(); } catch (e) {}
                 setTimeout(function () { location.reload(); }, 300);
@@ -374,7 +373,6 @@
             armLaunch("READY (obsolete)");
         }, false);
 
-        // Timeout fallback if the manifest stalls silently.
         setTimeout(function () {
             if (cacheArmed) return;
             setCache("cache timeout -- running from network");
