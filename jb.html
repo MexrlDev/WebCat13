@@ -6,26 +6,21 @@
 <title>Jailbreak</title>
 <style>
   *{ box-sizing:border-box; }
-
   html{ height:100%; background:#08090c; }
-
   html::before{
     content:"";
-    position:fixed;
-    inset:0;
+    position:fixed; inset:0;
     background:url("background/bg.png") center / cover no-repeat;
     z-index:-2;
   }
   html::after{
     content:"";
-    position:fixed;
-    inset:0;
+    position:fixed; inset:0;
     background:radial-gradient(ellipse at center,
       rgba(0,0,0,.06) 0%, rgba(0,0,0,.45) 100%);
     z-index:-1;
     pointer-events:none;
   }
-
   body{
     margin:0;
     min-height:100vh;
@@ -40,9 +35,7 @@
     color:#eef2f7;
     font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
-    transition: align-items .35s ease;
   }
-
   #card{
     position:relative;
     z-index:10;
@@ -67,7 +60,6 @@
     background:linear-gradient(180deg,
       rgba(255,255,255,.08), rgba(255,255,255,0) 45%);
   }
-
   #brand{
     position:relative;
     display:flex;
@@ -111,7 +103,6 @@
   body.done .brand-done { display:inline; }
   body.fail .brand-run  { display:none; }
   body.fail .brand-fail { display:inline; }
-
   #status{
     position:relative;
     width:64px;
@@ -133,17 +124,14 @@
     display:none;
     position:absolute;
     top:0; left:0;
-    width:64px;
-    height:64px;
+    width:64px; height:64px;
   }
   .status-check{ color:#7ff0b8; filter: drop-shadow(0 0 14px rgba(127,240,184,.55)); }
   .status-fail { color:#ff9d9d; filter: drop-shadow(0 0 14px rgba(255,120,120,.55)); }
-
   body.done #spinner{ display:none; }
   body.done .status-check{ display:block; }
   body.fail #spinner{ display:none; }
   body.fail .status-fail{ display:block; }
-
   #msg{
     display:block;
     text-align:center;
@@ -154,14 +142,11 @@
   #msg .msg-run  { display:block; color:rgba(238,242,247,.70); }
   #msg .msg-done { display:none;  color:#7ff0b8; text-shadow:0 0 24px rgba(127,240,184,.45); }
   #msg .msg-fail { display:none;  color:#ff9d9d; text-shadow:0 0 24px rgba(255,120,120,.45); }
-
   body.done #msg .msg-run { display:none; }
   body.done #msg .msg-done{ display:block; }
   body.fail #msg .msg-run { display:none; }
   body.fail #msg .msg-fail{ display:block; }
-
   #wrap{ display:none; position:relative; z-index:1; }
-
   body.log{ align-items:flex-start; }
   body.log #status,
   body.log #msg{ display:none !important; }
@@ -180,7 +165,6 @@
     padding:16px 18px;
     gap:12px;
   }
-
   #state{
     display:none;
     font-size:17px;
@@ -204,7 +188,6 @@
     box-shadow:0 0 12px currentColor;
     animation: pulse 1.6s ease-in-out infinite;
   }
-
   #out{
     flex:1;
     min-height:0;
@@ -222,25 +205,50 @@
     overscroll-behavior:contain;
   }
 
-  /* ---- full-screen success video ---- */
+  /* ---- SUCCESS VIDEO ----
+     Always in the compositor's view: real dimensions, display:block,
+     pointer-events:none, opacity:0, z-index:-1. The card sits on top.
+     On success we raise opacity and z-index, then play after a tiny
+     delay to let PS4 WebKit recognize the element is on-screen. */
   #success-video{
     position:fixed;
     top:0; left:0;
     width:100vw;
     height:100vh;
-    object-fit:cover;
     background:#000;
-    z-index:2147483647;
-    display:none;
+    z-index:-1;
+    opacity:0;
+    display:block;
     pointer-events:none;
     -webkit-user-select:none;
     user-select:none;
+    transition: opacity .18s linear;
   }
   body.video-active #success-video{
-    display:block;
+    opacity:1;
+    z-index:2147483647;
     pointer-events:auto;
   }
   body.video-active #card{ display:none !important; }
+
+  /* Simple fallback message if the video can't decode */
+  #video-fallback{
+    position:fixed;
+    top:0; left:0;
+    width:100vw; height:100vh;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    background:#000;
+    color:#7ff0b8;
+    font:600 20px/1.5 ui-sans-serif,system-ui,sans-serif;
+    letter-spacing:.06em;
+    text-align:center;
+    padding:20px;
+    z-index:2147483647;
+    pointer-events:none;
+  }
+  body.video-fallback #video-fallback{ display:flex; }
 
   #sound-hint{
     position:fixed;
@@ -271,12 +279,12 @@
     0%,100%{ opacity:.55; }
     50%    { opacity:1; }
   }
-
   @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
     #card{ background:rgba(14,17,22,.78); }
   }
   @media (prefers-reduced-motion:reduce){
     #card, #spinner, #brand .dot, #state::before{ animation:none; }
+    #success-video{ transition:none; }
     body.video-muted #sound-hint{ animation:none; }
   }
 </style>
@@ -326,41 +334,50 @@
          x5-playsinline
          disablepictureinpicture
          disableremoteplayback
-         controlslist="nodownload nofullscreen noremoteplayback">
+         controlslist="nodownload nofullscreen noremoteplayback"
+         muted>
+    <source src="media/unshackled.mp4" type="video/mp4; codecs=&quot;avc1.42E01E, mp4a.40.2&quot;">
     <source src="media/unshackled.mp4" type="video/mp4">
   </video>
 
+  <div id="video-fallback">Jailbreak complete &mdash; restart your console</div>
   <div id="sound-hint">Tap for sound</div>
 
   <script>
     (function () {
-      var STATS_KEY  = "ps4-jb-stats-v1";
-      var video      = document.getElementById("success-video");
-      var outEl      = document.getElementById("out");
+      var STATS_KEY = "ps4-jb-stats-v1";
+      var video = document.getElementById("success-video");
+      var outEl = document.getElementById("out");
 
-      var started    = false;
-      var playing    = false;
-      var finished   = false;
-      var counted    = false;
-      var lastPlay   = 0;
+      var counted = false;
+      var started = false;
+      var playing = false;
+      var finished = false;
+      var failed  = false;
 
       function hasClass(c){ try { return document.body.classList.contains(c); } catch (e) { return false; } }
       function addClass(c){ try { document.body.classList.add(c); } catch (e) {} }
       function removeClass(c){ try { document.body.classList.remove(c); } catch (e) {} }
 
+      // ---- stats ----
       function bumpStats(ok) {
         if (counted) return;
         counted = true;
         try {
-          var raw = localStorage.getItem(STATS_KEY) || "{}";
-          var s = JSON.parse(raw);
+          var raw = localStorage.getItem(STATS_KEY) || "";
+          var s = {};
+          if (raw) { try { s = JSON.parse(raw) || {}; } catch (e) { s = {}; } }
           if (!s || typeof s !== "object") s = {};
-          if (ok) s.success = (s.success | 0) + 1;
-          else    s.failed  = (s.failed  | 0) + 1;
-          localStorage.setItem(STATS_KEY, JSON.stringify(s));
+          var success = (typeof s.success === "number" && s.success >= 0) ? (s.success | 0) : 0;
+          var failedN = (typeof s.failed  === "number" && s.failed  >= 0) ? (s.failed  | 0) : 0;
+          if (ok) success++; else failedN++;
+          localStorage.setItem(STATS_KEY, JSON.stringify({
+            success: success, failed: failedN, updatedAt: Date.now()
+          }));
         } catch (e) {}
       }
 
+      // ---- sound ----
       function showSoundHint(){ addClass("video-muted"); }
       function hideSoundHint(){ removeClass("video-muted"); }
       function tryUnmute() {
@@ -371,85 +388,97 @@
         }, 300);
       }
 
-      // Revert to the card (check mark + message) if the video can't
-      // actually play. Never leave the user staring at a black rectangle.
-      function revertToCard() {
+      // ---- fallback (video can't decode) ----
+      function fallbackToMessage() {
+        if (failed) return;
+        failed = true;
+        try { video.pause(); } catch (e) {}
         removeClass("video-active");
         removeClass("video-muted");
+        addClass("video-fallback");
       }
 
+      // ---- play attempt ----
       function tryPlay() {
-        if (finished) return;
-        lastPlay = Date.now();
-        try { video.muted = false; video.volume = 1.0; } catch (e) {}
+        if (finished || failed) return;
+        try { video.muted = true; } catch (e) {}
 
         var p;
         try { p = video.play(); }
-        catch (e) {
-          try { video.muted = true; video.play(); showSoundHint(); }
-          catch (e2) { revertToCard(); }
-          return;
-        }
+        catch (e) { fallbackToMessage(); return; }
+
         if (p && typeof p.then === "function") {
-          p.then(function () { hideSoundHint(); })
-           .catch(function () {
-              try { video.muted = true; } catch (e) {}
-              var q;
-              try { q = video.play(); }
-              catch (e) { revertToCard(); return; }
+          p.catch(function () {
+            // Some engines refuse even muted autoplay; try once more.
+            try {
+              video.muted = true;
+              var q = video.play();
               if (q && typeof q.then === "function") {
-                q.then(function () { tryUnmute(); })
-                 .catch(function () { revertToCard(); });
-              } else {
-                tryUnmute();
+                q.catch(function () { fallbackToMessage(); });
               }
-           });
+            } catch (e) { fallbackToMessage(); }
+          });
         }
       }
 
+      // ---- video events ----
       video.addEventListener("playing", function () {
-        if (!playing) {
-          playing = true;
-          addClass("video-active");
-        }
+        playing = true;
+        removeClass("video-fallback");
         if (video.muted) tryUnmute();
-        else hideSoundHint();
       });
-
-      video.addEventListener("error", function () {
-        // File missing, codec unsupported, or network fetch failed.
-        // Fall back to the card so the user sees the success state.
-        revertToCard();
-      });
-
+      video.addEventListener("error", function () { fallbackToMessage(); });
       video.addEventListener("ended", function () {
         finished = true;
         try { video.pause(); } catch (e) {}
       });
 
       document.addEventListener("click", function () {
-        if (!playing || finished) return;
+        if (!started || finished) return;
         if (video.muted) tryUnmute();
       }, true);
 
-      try { video.preload = "auto"; video.load(); } catch (e) {}
+      // Kick off preload as early as possible.
+      try { video.load(); } catch (e) {}
 
-      // ----- THE FIX -----
-      // Make the video element visible in the render tree BEFORE play().
-      // On PS4 WebKit, play() called on a display:none <video> never fires
-      // the "playing" event, which was leaving the video invisible forever.
-      function start() {
-        if (started) return;
-        started = true;
-        addClass("video-active");     // <-- first
+      // ---- start the video on success ----
+      function playNow() {
         try { video.currentTime = 0; } catch (e) {}
-        tryPlay();                    // <-- then play
+        tryPlay();
+
+        // Watchdog: if nothing played in 8s, fall back to a text message.
+        setTimeout(function () {
+          if (!playing && !finished) fallbackToMessage();
+        }, 8000);
       }
 
+      function startVideo() {
+        if (started) return;
+        started = true;
+
+        // 1. Make the video visible in the render tree.
+        addClass("video-active");
+
+        // 2. Force a layout flush so the browser sees the video on-screen.
+        void video.offsetWidth;
+
+        // 3. If metadata is already loaded, wait a beat then play.
+        //    Otherwise wait for loadedmetadata, then play.
+        if (video.readyState >= 1) {
+          setTimeout(playNow, 120);
+        } else {
+          var fired = false;
+          function onMeta() { if (!fired) { fired = true; setTimeout(playNow, 120); } }
+          video.addEventListener("loadedmetadata", onMeta, { once: true });
+          setTimeout(onMeta, 2500);
+        }
+      }
+
+      // ---- success / failure detection ----
       function evaluate() {
         if (hasClass("done")) {
           bumpStats(true);
-          start();
+          startVideo();
           return;
         }
         if (hasClass("fail")) {
@@ -463,7 +492,7 @@
               bumpStats(false);
             } else if (/PAYLOAD-RUNNING/.test(txt) || /PROOF-OK\s+PAYLOAD-RUNNING/.test(txt)) {
               bumpStats(true);
-              if (!hasClass("log")) start();
+              if (!hasClass("log")) startVideo();
             }
           }
         }
@@ -483,13 +512,11 @@
       }
       evaluate();
 
+      // Retry watchdog. Never fires after ended.
       setInterval(function () {
         evaluate();
         if (finished || video.ended) { finished = true; return; }
-        // Retry only if the video is actually paused (not just because
-        // the "playing" event hasn't fired yet).
-        if (hasClass("done") && !playing && video.paused &&
-            Date.now() - lastPlay > 3000) {
+        if (hasClass("video-active") && !playing && video.paused && !failed) {
           tryPlay();
         }
       }, 4000);
