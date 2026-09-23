@@ -9,16 +9,18 @@
   html{ height:100%; background:#08090c; }
   html::before{
     content:"";
-    position:fixed; inset:0;
+    position:fixed;
+    top:0; left:0; right:0; bottom:0;
     background:url("background/bg.png") center / cover no-repeat;
-    z-index:-2;
+    z-index:0;
   }
   html::after{
     content:"";
-    position:fixed; inset:0;
+    position:fixed;
+    top:0; left:0; right:0; bottom:0;
     background:radial-gradient(ellipse at center,
       rgba(0,0,0,.06) 0%, rgba(0,0,0,.45) 100%);
-    z-index:-1;
+    z-index:1;
     pointer-events:none;
   }
   body{
@@ -35,6 +37,8 @@
     color:#eef2f7;
     font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
+    position:relative;
+    z-index:2;
   }
   #card{
     position:relative;
@@ -54,7 +58,8 @@
   }
   #card::after{
     content:"";
-    position:absolute; inset:0;
+    position:absolute;
+    top:0; left:0; right:0; bottom:0;
     border-radius:inherit;
     pointer-events:none;
     background:linear-gradient(180deg,
@@ -205,13 +210,10 @@
     overscroll-behavior:contain;
   }
 
-  /* ---- FALLBACK TEXT (sits UNDER the video) ----
-     Only visible if the video can't decode. Same plain, centered style
-     as before: black background, green "Jailbreak Complete" text. */
+  /* ---- FALLBACK TEXT (behind the video) ---- */
   #video-fallback{
     position:fixed;
-    top:0; left:0;
-    width:100vw; height:100vh;
+    top:0; left:0; right:0; bottom:0;
     display:none;
     align-items:center;
     justify-content:center;
@@ -221,21 +223,21 @@
     letter-spacing:.06em;
     text-align:center;
     padding:20px;
-    z-index:2147483646;          /* one below the video, so the video wins */
+    z-index:90;
     pointer-events:none;
   }
   body.video-fallback #video-fallback{ display:flex; }
 
   /* ---- SUCCESS VIDEO ----
-     Always in the compositor's view: real dimensions, display:block,
-     opacity:0, z-index:-1. Card sits on top until video-active. */
+     Kept in the compositor with a POSITIVE z-index from page load so
+     old WebKit will actually start playback. Transparent until active. */
   #success-video{
     position:fixed;
     top:0; left:0;
     width:100vw;
     height:100vh;
     background:#000;
-    z-index:-1;
+    z-index:100;
     opacity:0;
     display:block;
     pointer-events:none;
@@ -245,7 +247,6 @@
   }
   body.video-active #success-video{
     opacity:1;
-    z-index:2147483647;          /* wins over the fallback text */
     pointer-events:auto;
   }
   body.video-active #card{ display:none !important; }
@@ -261,7 +262,7 @@
     color:#fff;
     font-size:13px;
     letter-spacing:.02em;
-    z-index:2147483647;
+    z-index:200;
     display:none;
     pointer-events:none;
     -webkit-backdrop-filter: blur(8px);
@@ -327,19 +328,17 @@
     </div>
   </main>
 
-  <!-- Fallback text — lives UNDER the video. Only shown if the video fails. -->
+  <!-- Fallback text — sits UNDER the video. Only shown if the video fails. -->
   <div id="video-fallback">Jailbreak Complete</div>
 
   <video id="success-video"
          preload="auto"
          playsinline
          webkit-playsinline
-         x5-playsinline
          disablepictureinpicture
          disableremoteplayback
          controlslist="nodownload nofullscreen noremoteplayback"
          muted>
-    <source src="media/unshackled.mp4" type="video/mp4; codecs=&quot;avc1.42E01E, mp4a.40.2&quot;">
     <source src="media/unshackled.mp4" type="video/mp4">
   </video>
 
@@ -356,6 +355,7 @@
       var playing = false;
       var finished = false;
       var failed  = false;
+      var playAttempts = 0;
 
       function hasClass(c){ try { return document.body.classList.contains(c); } catch (e) { return false; } }
       function addClass(c){ try { document.body.classList.add(c); } catch (e) {} }
@@ -382,15 +382,23 @@
       // ---- sound ----
       function showSoundHint(){ addClass("video-muted"); }
       function hideSoundHint(){ removeClass("video-muted"); }
+
       function tryUnmute() {
         try { video.muted = false; video.volume = 1.0; } catch (e) {}
         setTimeout(function () {
-          if (video.muted) showSoundHint();
-          else hideSoundHint();
+          try {
+            if (video.muted) showSoundHint();
+            else hideSoundHint();
+          } catch (e) {}
         }, 300);
       }
 
-      // ---- fallback (video can't decode) ----
+      function forceUnmute() {
+        try { video.muted = false; video.volume = 1.0; } catch (e) {}
+        hideSoundHint();
+      }
+
+      // ---- fallback (video can't decode / can't play) ----
       function fallbackToMessage() {
         if (failed) return;
         failed = true;
@@ -400,26 +408,52 @@
         addClass("video-fallback");
       }
 
-      // ---- play attempt ----
-      function tryPlay() {
+      // ---- play attempt with retries ----
+      function attemptPlay() {
         if (finished || failed) return;
-        try { video.muted = true; } catch (e) {}
+        playAttempts++;
+
+        // Give up after too many retries and show the text fallback.
+        if (playAttempts > 15) { fallbackToMessage(); return; }
+
+        try { if (video.ended) video.currentTime = 0; } catch (e) {}
 
         var p;
         try { p = video.play(); }
-        catch (e) { fallbackToMessage(); return; }
+        catch (e) {
+          // Some engines throw synchronously. Retry muted.
+          try { video.muted = true; p = video.play(); }
+          catch (e2) { fallbackToMessage(); return; }
+        }
 
         if (p && typeof p.then === "function") {
-          p.catch(function () {
-            // Some engines refuse even muted autoplay; try once more.
+          p.then(function () {
+            playing = true;
+          }).catch(function () {
+            // Play rejected. Try once more with muted=true.
             try {
               video.muted = true;
-              var q = video.play();
-              if (q && typeof q.then === "function") {
-                q.catch(function () { fallbackToMessage(); });
+              var p2 = video.play();
+              if (p2 && typeof p2.then === "function") {
+                p2.then(function () {
+                  playing = true;
+                  showSoundHint();
+                }).catch(function () {
+                  if (playAttempts >= 6) fallbackToMessage();
+                  else setTimeout(attemptPlay, 600);
+                });
+              } else {
+                playing = true;
+                showSoundHint();
               }
-            } catch (e) { fallbackToMessage(); }
+            } catch (e) {
+              if (playAttempts >= 6) fallbackToMessage();
+              else setTimeout(attemptPlay, 600);
+            }
           });
+        } else {
+          // No promise API — assume success.
+          playing = true;
         }
       }
 
@@ -435,53 +469,56 @@
         try { video.pause(); } catch (e) {}
       });
 
-      document.addEventListener("click", function () {
-        if (!started || finished) return;
-        if (video.muted) tryUnmute();
-      }, true);
+      // ---- user interaction: unmute ----
+      function onUserInput() {
+        if (hasClass("video-active") && video.muted && !finished && !failed) {
+          forceUnmute();
+        }
+      }
+      document.addEventListener("click", onUserInput, true);
+      document.addEventListener("touchstart", onUserInput, true);
+      document.addEventListener("keydown", onUserInput, true);
 
       // Kick off preload as early as possible.
       try { video.load(); } catch (e) {}
 
       // ---- start the video on success ----
-      // Ready-state gate: if we already have enough data, play instantly.
-      // Otherwise fire as soon as the first frame is decoded.
-      function playNow() {
-        try { video.currentTime = 0; } catch (e) {}
-        tryPlay();
-
-        // Watchdog: if nothing played in 8s, fall back to the text.
-        setTimeout(function () {
-          if (!playing && !finished) fallbackToMessage();
-        }, 8000);
-      }
-
       function startVideo() {
         if (started) return;
         started = true;
+        playAttempts = 0;
 
-        // 1. Make the video visible in the render tree.
+        // 1. Flip the CSS state so the element is on the compositor.
         addClass("video-active");
 
-        // 2. Force a layout flush so the browser sees the video on-screen.
+        // 2. Force a layout flush so old WebKit notices.
         void video.offsetWidth;
 
-        // 3. Play as soon as we can. If we already have data, go now.
-        //    Otherwise hook "loadeddata" and play the moment frames exist.
+        // 3. Rewind and drive playback as soon as we have data.
+        try { video.currentTime = 0; } catch (e) {}
+
+        var go = function () {
+          if (playing || finished || failed) return;
+          attemptPlay();
+        };
+
         if (video.readyState >= 2) {
-          playNow();
+          go();
         } else if (video.readyState >= 1) {
-          video.addEventListener("loadeddata", playNow, { once: true });
-          // Safety: if loadeddata is late, play anyway.
-          setTimeout(playNow, 400);
+          video.addEventListener("loadeddata", go, { once: true });
+          setTimeout(go, 400);
         } else {
           var fired = false;
-          function onReady() { if (!fired) { fired = true; playNow(); } }
+          var onReady = function () { if (!fired) { fired = true; go(); } };
           video.addEventListener("loadeddata", onReady, { once: true });
           video.addEventListener("canplay",    onReady, { once: true });
-          // Safety: if neither fires, try anyway.
           setTimeout(onReady, 800);
         }
+
+        // Watchdog: if nothing has played in 12s, fall back to the text.
+        setTimeout(function () {
+          if (!playing && !finished && !failed) fallbackToMessage();
+        }, 12000);
       }
 
       // ---- success / failure detection ----
@@ -502,7 +539,7 @@
               bumpStats(false);
             } else if (/PAYLOAD-RUNNING/.test(txt) || /PROOF-OK\s+PAYLOAD-RUNNING/.test(txt)) {
               bumpStats(true);
-              if (!hasClass("log")) startVideo();
+              startVideo();
             }
           }
         }
@@ -527,7 +564,7 @@
         evaluate();
         if (finished || video.ended) { finished = true; return; }
         if (hasClass("video-active") && !playing && video.paused && !failed) {
-          tryPlay();
+          attemptPlay();
         }
       }, 4000);
 
