@@ -1,16 +1,16 @@
-name: Re-encode success video for PS4
+name: Convert XeUnshackle success.wmv to PS4 MP4
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'media/unshackled.mp4'
+      - '.github/workflows/encode-success-video.yml'
 
 permissions:
   contents: write
 
 jobs:
-  encode:
+  convert:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -25,67 +25,103 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Probe source video
+      - name: Download original success.wmv from Byrom90/XeUnshackle
         run: |
-          echo "--- source file ---"
-          ls -la media/unshackled.mp4
+          mkdir -p media
+          echo "--- downloading source ---"
+          curl -L --fail -o /tmp/success.wmv \
+            "https://github.com/Byrom90/XeUnshackle/raw/refs/heads/main/Media/success.wmv"
+          ls -la /tmp/success.wmv
           echo "--- source streams ---"
           ffprobe -v error -show_entries \
-            stream=index,codec_name,profile,level,width,height,pix_fmt,bit_rate \
-            -of default=noprint_wrappers=1 media/unshackled.mp4
+            stream=index,codec_name,codec_type,profile,level,width,height,pix_fmt,sample_rate,channels,bit_rate \
+            -of default=noprint_wrappers=1 /tmp/success.wmv
 
-      - name: Re-encode to H.264 Constrained Baseline + AAC-LC
+      - name: Convert to PS4-compatible MP4 (H.264 Baseline + AAC-LC)
         run: |
-          ffmpeg -y -i media/unshackled.mp4 \
+          ffmpeg -y -i /tmp/success.wmv \
             -c:v libx264 \
-            -profile:v baseline \
-            -level 3.1 \
+            -profile:v baseline -level 3.1 \
             -pix_fmt yuv420p \
             -x264-params "cabac=0:bframes=0:8x8dct=0:weightp=0:weightb=0:ref=1:keyint=30:min-keyint=30:scenecut=0" \
             -crf 23 \
             -vf "scale='min(1280,iw)':-2" \
             -c:a aac \
+            -profile:a aac_low \
             -b:a 128k \
             -ar 44100 \
             -ac 2 \
+            -af "aresample=async=1:first_pts=0" \
             -movflags +faststart \
-            media/unshackled_ps4.mp4
+            media/unshackled.mp4
 
-      - name: Verify output is Baseline and yuv420p
+      - name: Verify BOTH video AND audio streams
         run: |
           echo "--- output streams ---"
           ffprobe -v error -show_entries \
-            stream=codec_name,profile,level,width,height,pix_fmt \
-            -of default=noprint_wrappers=1 media/unshackled_ps4.mp4
+            stream=codec_name,codec_type,profile,level,width,height,pix_fmt,sample_rate,channels \
+            -of default=noprint_wrappers=1 media/unshackled.mp4
+          python3 - <<'PY'
+          import subprocess, sys, json
+
+          out = subprocess.run(
+              ["ffprobe", "-v", "error",
+               "-show_streams", "-of", "json",
+               "media/unshackled.mp4"],
+              capture_output=True, text=True).stdout
+          streams = json.loads(out)["streams"]
+
+          video = next((s for s in streams if s["codec_type"] == "video"), None)
+          audio = next((s for s in streams if s["codec_type"] == "audio"), None)
+
+          if not video: print("ERROR: no video stream"); sys.exit(1)
+          if not audio: print("ERROR: no audio stream"); sys.exit(1)
+
+          print(f"video: {video['codec_name']} profile={video.get('profile')} "
+                f"{video.get('width')}x{video.get('height')} pix={video.get('pix_fmt')}")
+          print(f"audio: {audio['codec_name']} profile={audio.get('profile')} "
+                f"{audio.get('sample_rate')}Hz {audio.get('channels')}ch")
+
+          if video["codec_name"] != "h264":
+              print("ERROR: video is not H.264"); sys.exit(1)
+          if "Baseline" not in (video.get("profile") or ""):
+              print("ERROR: video profile is not Baseline"); sys.exit(1)
+          if video.get("pix_fmt") != "yuv420p":
+              print("ERROR: pixel format is not yuv420p"); sys.exit(1)
+          if audio["codec_name"] != "aac":
+              print("ERROR: audio is not AAC"); sys.exit(1)
+          if audio.get("profile") not in ("LC", "Low Complexity", "aac_low"):
+              print("ERROR: audio profile is not LC"); sys.exit(1)
+          if audio.get("sample_rate") != "44100":
+              print("WARNING: audio sample rate is not 44100")
+          if int(audio.get("channels", 0)) != 2:
+              print("WARNING: audio is not stereo")
+
+          print("OK: video is H.264 Baseline, audio is AAC-LC.")
+          PY
+
+      - name: Verify avcC profile byte
+        run: |
           python3 - <<'PY'
           import sys
-          data = open('media/unshackled_ps4.mp4','rb').read()
+          data = open('media/unshackled.mp4','rb').read()
           i = data.find(b'avcC')
-          if i < 0:
-              print("ERROR: no avcC box found"); sys.exit(1)
+          if i < 0: print("ERROR: no avcC box"); sys.exit(1)
           profile = data[i+5]
           names = {0x42: "Baseline", 0x4d: "Main", 0x64: "High"}
-          print(f"profile_idc = 0x{profile:02x} ({names.get(profile, 'unknown')})")
+          print(f"avcC profile_idc = 0x{profile:02x} ({names.get(profile, 'unknown')})")
           if profile != 0x42:
               print("ERROR: not Baseline. PS4 WebKit will show black.")
               sys.exit(1)
           print("OK: Baseline confirmed.")
           PY
 
-      - name: Show before/after sizes (informational only)
+      - name: Show sizes (informational)
         run: |
-          IN=$(stat -c%s media/unshackled.mp4)
-          OUT=$(stat -c%s media/unshackled_ps4.mp4)
-          echo "input  = $IN bytes"
-          echo "output = $OUT bytes"
-          # No pass/fail here. Baseline re-encodes of already-small sources
-          # come out roughly the same size. Baseline correctness was already
-          # verified by the avcC check above.
-
-      - name: Replace original with re-encoded version
-        run: |
-          mv media/unshackled_ps4.mp4 media/unshackled.mp4
-          ls -la media/unshackled.mp4
+          SRC=$(stat -c%s /tmp/success.wmv)
+          OUT=$(stat -c%s media/unshackled.mp4)
+          echo "source .wmv  = $SRC bytes"
+          echo "output .mp4  = $OUT bytes"
 
       - name: Commit and push
         run: |
@@ -95,6 +131,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "chore: re-encode unshackled.mp4 to H.264 Constrained Baseline for PS4 [skip ci]"
+            git commit -m "chore: convert XeUnshackle success.wmv to PS4 H.264 Baseline + AAC-LC [skip ci]"
             git push
           fi
