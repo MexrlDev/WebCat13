@@ -36,18 +36,19 @@ jobs:
             stream=index,codec_name,codec_type,profile,level,width,height,pix_fmt,sample_rate,channels,bit_rate \
             -of default=noprint_wrappers=1 /tmp/success.wmv
 
-      - name: Convert to PS4-compatible MP4 (H.264 Baseline + AAC-LC)
+      - name: Convert to PS4-compatible MP4 (H.264 Baseline HD + AAC-LC)
         run: |
           ffmpeg -y -i /tmp/success.wmv \
             -c:v libx264 \
-            -profile:v baseline -level 3.1 \
+            -profile:v baseline -level 4.0 \
             -pix_fmt yuv420p \
             -x264-params "cabac=0:bframes=0:8x8dct=0:weightp=0:weightb=0:ref=1:keyint=30:min-keyint=30:scenecut=0" \
-            -crf 23 \
-            -vf "scale='min(1280,iw)':-2" \
+            -crf 20 \
+            -preset medium \
+            -vf "scale='min(1920,iw)':-2" \
             -c:a aac \
             -profile:a aac_low \
-            -b:a 128k \
+            -b:a 192k \
             -ar 44100 \
             -ac 2 \
             -af "aresample=async=1:first_pts=0" \
@@ -77,6 +78,7 @@ jobs:
           if not audio: print("ERROR: no audio stream"); sys.exit(1)
 
           print(f"video: {video['codec_name']} profile={video.get('profile')} "
+                f"level={video.get('level')} "
                 f"{video.get('width')}x{video.get('height')} pix={video.get('pix_fmt')}")
           print(f"audio: {audio['codec_name']} profile={audio.get('profile')} "
                 f"{audio.get('sample_rate')}Hz {audio.get('channels')}ch")
@@ -95,6 +97,14 @@ jobs:
               print("WARNING: audio sample rate is not 44100")
           if int(audio.get("channels", 0)) != 2:
               print("WARNING: audio is not stereo")
+
+          # Sanity check: HD or higher
+          w = int(video.get("width", 0))
+          h = int(video.get("height", 0))
+          if w < 1280 or h < 720:
+              print(f"WARNING: output is only {w}x{h} -- source may be lower than HD")
+          else:
+              print(f"OK: output is {w}x{h}")
 
           print("OK: video is H.264 Baseline, audio is AAC-LC.")
           PY
@@ -130,6 +140,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "chore: convert XeUnshackle success.wmv to PS4 H.264 Baseline + AAC-LC [skip ci]"
+            git commit -m "chore: convert XeUnshackle success.wmv to PS4 H.264 Baseline HD + AAC-LC [skip ci]"
             git push
           fi
