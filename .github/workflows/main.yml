@@ -28,7 +28,6 @@ jobs:
       - name: Download original success.wmv from Byrom90/XeUnshackle
         run: |
           mkdir -p media
-          echo "--- downloading source ---"
           curl -L --fail -o /tmp/success.wmv \
             "https://github.com/Byrom90/XeUnshackle/raw/refs/heads/main/Media/success.wmv"
           ls -la /tmp/success.wmv
