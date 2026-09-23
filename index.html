@@ -238,40 +238,46 @@
 
     var target = "jb.html" + location.search;
 
-    // ---- the ONLY way out of this page is a real user press ----
-    var launched = false;
-    var armed = false;
-    var ARM_DELAY_MS = 2500;    // 2.5 s -- longer than any synthetic event
+    // ============================================================
+    // Only the X button (Enter) or a touch/click activates.
+    // No arming delay — the very first valid press fires immediately.
+    // ============================================================
+    function bindXorTap(action) {
+        var fired = false;
+        function tryFire(ev) {
+            if (fired) return;
+            if (!ev || ev.isTrusted !== true) return;
+
+            if (ev.type === "keydown") {
+                // PS4 reports the X button as the Enter key.
+                var isEnter =
+                    ev.key === "Enter" ||
+                    ev.code === "Enter" ||
+                    ev.code === "NumpadEnter" ||
+                    ev.keyCode === 13;
+                if (!isEnter) return;      // ignore Options, Circle, arrows, etc.
+            }
+
+            fired = true;
+            window.removeEventListener("keydown",   tryFire, true);
+            window.removeEventListener("click",     tryFire, true);
+            window.removeEventListener("touchend",  tryFire, true);
+            window.removeEventListener("pointerup", tryFire, true);
+            action();
+        }
+        window.addEventListener("keydown",   tryFire, true);
+        window.addEventListener("click",     tryFire, true);
+        window.addEventListener("touchend",  tryFire, true);
+        window.addEventListener("pointerup", tryFire, true);
+    }
 
     function waitForTap(msg, action) {
         setState(msg, "warn");
         setPrompt("Press X or tap the screen to start");
-
-        armed = false;
-        setTimeout(function () { armed = true; }, ARM_DELAY_MS);
-
-        function fire(ev) {
-            // Reject synthetic events outright. PS4 WebKit sometimes fires
-            // a click or pointerup right after page load; isTrusted is
-            // false on those, so we never act on them.
-            if (!ev || ev.isTrusted !== true) return;
-            if (!armed) return;
-            if (launched) return;
-            launched = true;
-
-            window.removeEventListener("pointerup", fire, true);
-            window.removeEventListener("keydown",   fire, true);
-            window.removeEventListener("click",     fire, true);
-            window.removeEventListener("touchend",  fire, true);
-
+        bindXorTap(function () {
             setPrompt("");
             action();
-        }
-
-        window.addEventListener("pointerup", fire, true);
-        window.addEventListener("keydown",   fire, true);
-        window.addEventListener("click",     fire, true);
-        window.addEventListener("touchend",  fire, true);
+        });
     }
 
     function go() {
@@ -308,19 +314,10 @@
         setCache("update ready -- press X to apply", true);
         setState("update ready", "warn");
         setPrompt("Press X or tap to apply update");
-        var updateFired = false;
-        function doUpdate(ev) {
-            if (!ev || ev.isTrusted !== true) return;
-            if (updateFired) return;
-            updateFired = true;
+        bindXorTap(function () {
             try { ac.swapCache(); } catch (e) {}
             setTimeout(function () { location.reload(); }, 300);
-        }
-        setTimeout(function () {
-            window.addEventListener("pointerup", doUpdate, true);
-            window.addEventListener("keydown",   doUpdate, true);
-            window.addEventListener("click",     doUpdate, true);
-        }, ARM_DELAY_MS);
+        });
     } else {
         setCache("caching for offline (first run)...");
         setState("preparing offline cache...", "warn");
@@ -344,18 +341,10 @@
             setCache("update ready -- reload required", true);
             setState("update ready", "warn");
             setPrompt("Press X or tap to reload");
-            var done = false;
-            function reloadNow(ev) {
-                if (!ev || ev.isTrusted !== true) return;
-                if (done) return; done = true;
+            bindXorTap(function () {
                 try { ac.swapCache(); } catch (e) {}
                 setTimeout(function () { location.reload(); }, 300);
-            }
-            setTimeout(function () {
-                window.addEventListener("pointerup", reloadNow, true);
-                window.addEventListener("keydown",   reloadNow, true);
-                window.addEventListener("click",     reloadNow, true);
-            }, ARM_DELAY_MS);
+            });
         }, false);
         ac.addEventListener("noupdate", function () {
             setCache("cached -- offline ready", true);
