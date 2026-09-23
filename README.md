@@ -3,7 +3,7 @@
 * Goldhen added 
 ---
 ## Issues
-As you see.. video has a bad time getting to be played! tryina fix it 
+~~As you see.. video has a bad time getting to be played! tryina fix it~~ - **FIXED?**
 
 ---
 ## Source code & Credits
