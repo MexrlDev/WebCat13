@@ -1,0 +1,102 @@
+name: Re-encode success video for PS4
+
+on:
+  # Run it manually from the Actions tab whenever you want.
+  workflow_dispatch:
+  # Also run it automatically whenever the source video changes.
+  # (Committed by the bot, this won't loop because of the [skip ci] tag.)
+  push:
+    paths:
+      - 'media/unshackled.mp4'
+
+permissions:
+  contents: write
+
+jobs:
+  encode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Probe source video
+        run: |
+          echo "--- source file ---"
+          ls -la media/unshackled.mp4
+          echo "--- source streams ---"
+          ffprobe -v error -show_entries stream=codec_name,profile,level,width,height -of default=noprint_wrappers=1 media/unshackled.mp4
+
+      - name: Re-encode to H.264 Baseline + AAC-LC
+        run: |
+          ffmpeg -y -i media/unshackled.mp4 \
+            -c:v libx264 \
+            -profile:v baseline \
+            -level 3.1 \
+            -pix_fmt yuv420p \
+            -x264-params "cabac=0:bframes=0:8x8dct=0:weightp=0:weightb=0:ref=1:keyint=30:min-keyint=30:scenecut=0" \
+            -crf 23 \
+            -vf "scale='min(1280,iw)':-2" \
+            -c:a aac \
+            -b:a 128k \
+            -ar 44100 \
+            -ac 2 \
+            -movflags +faststart \
+            media/unshackled_ps4.mp4
+
+      - name: Verify profile is really Baseline (0x42)
+        run: |
+          python3 - <<'PY'
+          import sys
+          data = open('media/unshackled_ps4.mp4','rb').read()
+          i = data.find(b'avcC')
+          if i < 0:
+              print("ERROR: no avcC box found")
+              sys.exit(1)
+          profile = data[i+5]
+          names = {0x42: "Baseline", 0x4d: "Main", 0x64: "High"}
+          print(f"profile_idc = 0x{profile:02x} ({names.get(profile, 'unknown')})")
+          if profile != 0x42:
+              print("ERROR: not Baseline. PS4 WebKit will show black.")
+              sys.exit(1)
+          print("OK: Baseline confirmed.")
+          PY
+
+      - name: Check output size
+        run: |
+          IN=$(stat -c%s media/unshackled.mp4)
+          OUT=$(stat -c%s media/unshackled_ps4.mp4)
+          echo "input  = $IN bytes"
+          echo "output = $OUT bytes"
+          echo "ratio  = $(python3 -c "print(f'{$OUT/$IN:.2f}')")"
+          # If output is >= 90% of input, x264 didn't actually re-encode.
+          if [ "$OUT" -ge $((IN * 9 / 10)) ]; then
+            echo "ERROR: output is almost the same size as input."
+            echo "       The encoder probably just remuxed without re-encoding."
+            exit 1
+          fi
+
+      - name: Replace original with re-encoded version
+        run: |
+          mv media/unshackled_ps4.mp4 media/unshackled.mp4
+          ls -la media/unshackled.mp4
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add media/unshackled.mp4
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: re-encode unshackled.mp4 to H.264 Baseline for PS4 [skip ci]"
+            git push
+          fi
