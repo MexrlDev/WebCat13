@@ -1,9 +1,8 @@
 CACHE MANIFEST
-# rev 20260922-isolated-video-page
+# rev 20260923-inline-video-jb-no-success-page
 
 index.html
 jb.html
-success.html
 
 jb.js
 jb.js?v=10
