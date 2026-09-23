@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" manifest="cache.appcache">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
@@ -9,18 +9,16 @@
   html{ height:100%; background:#08090c; }
   html::before{
     content:"";
-    position:fixed;
-    top:0; left:0; right:0; bottom:0;
+    position:fixed; inset:0;
     background:url("background/bg.png") center / cover no-repeat;
-    z-index:0;
+    z-index:-2;
   }
   html::after{
     content:"";
-    position:fixed;
-    top:0; left:0; right:0; bottom:0;
+    position:fixed; inset:0;
     background:radial-gradient(ellipse at center,
       rgba(0,0,0,.06) 0%, rgba(0,0,0,.45) 100%);
-    z-index:1;
+    z-index:-1;
     pointer-events:none;
   }
   body{
@@ -37,8 +35,6 @@
     color:#eef2f7;
     font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
     -webkit-font-smoothing:antialiased;
-    position:relative;
-    z-index:2;
   }
   #card{
     position:relative;
@@ -58,8 +54,7 @@
   }
   #card::after{
     content:"";
-    position:absolute;
-    top:0; left:0; right:0; bottom:0;
+    position:absolute; inset:0;
     border-radius:inherit;
     pointer-events:none;
     background:linear-gradient(180deg,
@@ -75,11 +70,7 @@
     background:rgba(0,0,0,.16);
     z-index:1;
   }
-  #brand img{
-    width:28px; height:28px;
-    border-radius:50%;
-    flex:0 0 auto;
-  }
+  #brand img{ width:28px; height:28px; border-radius:50%; flex:0 0 auto; }
   #brand b{
     font-size:15px;
     font-weight:700;
@@ -211,10 +202,9 @@
   }
 
   /* ============================================================
-     VIDEO STAGE — mimics Test G exactly.
-     A plain fixed full-viewport parent toggled via display:none/block.
-     The video is a real absolute-positioned child of that parent.
-     No opacity, no negative z-index, no transitions. Ever.
+     VIDEO LAYER — plain and boring on purpose.
+     Fixed full-viewport stage (Test G's shape), real absolute
+     child video. No opacity, no transitions, no negative z-index.
      ============================================================ */
   #video-stage{
     position:fixed;
@@ -223,9 +213,12 @@
     height:100%;
     background:#000;
     display:none;
-    z-index:1000;
+    z-index:999998;
     overflow:hidden;
   }
+  body.video-active #video-stage{ display:block; }
+  body.video-active #card,
+  body.video-active #video-fallback{ visibility:hidden !important; }
 
   #success-video{
     position:absolute;
@@ -240,18 +233,10 @@
     user-select:none;
   }
 
-  /* When video is active or has failed, we own the screen. */
-  body.video-active #video-stage { display:block; }
-  body.video-failed #video-stage { display:block; }
-  body.video-active #card,
-  body.video-failed #card { display:none !important; }
-
-  /* Fallback text — only when the video could not play at all. */
+  /* Fallback text — only when the video cannot play at all. */
   #video-fallback{
     position:fixed;
     top:0; left:0; right:0; bottom:0;
-    width:100%;
-    height:100%;
     display:none;
     align-items:center;
     justify-content:center;
@@ -261,23 +246,24 @@
     letter-spacing:.06em;
     text-align:center;
     padding:20px;
-    z-index:1001;
+    z-index:999997;
     pointer-events:none;
   }
   body.video-failed #video-fallback{ display:flex; }
+  body.video-failed #card{ visibility:hidden !important; }
 
   #sound-hint{
     position:fixed;
     bottom:calc(24px + env(safe-area-inset-bottom));
     left:50%;
-    transform: translateX(-50%);
+    transform:translateX(-50%);
     padding:10px 18px;
     border-radius:999px;
     background:rgba(0,0,0,.68);
     color:#fff;
     font-size:13px;
     letter-spacing:.02em;
-    z-index:1100;
+    z-index:999999;
     display:none;
     pointer-events:none;
     -webkit-backdrop-filter: blur(8px);
@@ -342,7 +328,7 @@
     </div>
   </main>
 
-  <!-- Fixed full-viewport stage, exactly like Test G's #fs-stage. -->
+  <!-- Fixed full-viewport stage — mirrors Test G's #fs-stage. -->
   <div id="video-stage">
     <video id="success-video"
            playsinline
@@ -350,38 +336,41 @@
            preload="auto"
            disablepictureinpicture
            disableremoteplayback
-           controlslist="nodownload nofullscreen noremoteplayback"
-           muted></video>
+           controlslist="nodownload nofullscreen noremoteplayback"></video>
   </div>
 
-  <!-- Fallback text — shown only if the video can't play at all. -->
   <div id="video-fallback">Jailbreak Complete</div>
-
   <div id="sound-hint">Tap for sound</div>
 
   <script>
     (function () {
       "use strict";
 
-      var VIDEO_URL  = "media/unshackled.mp4";
-      var STATS_KEY  = "ps4-jb-stats-v1";
+      var STATS_KEY = "ps4-jb-stats-v1";
 
-      var video = document.getElementById("success-video");
-      var stage = document.getElementById("video-stage");
-      var outEl = document.getElementById("out");
+      // Try the GitHub URL first — that's the one Test C/G/H proved works.
+      // Fall back to the local relative path if GitHub is unreachable.
+      var VIDEO_URLS = [
+        "https://mexrldev.github.io/WebCat13/media/unshackled.mp4",
+        "media/unshackled.mp4"
+      ];
 
-      var counted     = false;
-      var started     = false;
-      var srcAssigned = false;
-      var playing     = false;
-      var finished    = false;
-      var failed      = false;
+      var video  = document.getElementById("success-video");
+      var stage  = document.getElementById("video-stage");
+      var outEl  = document.getElementById("out");
+
+      var counted  = false;
+      var started  = false;
+      var urlIndex = 0;
+      var srcSet   = false;
+      var playing  = false;
+      var finished = false;
+      var failed   = false;
 
       function hasClass(c){ try { return document.body.classList.contains(c); } catch (e) { return false; } }
       function addClass(c){ try { document.body.classList.add(c); }    catch (e) {} }
       function removeClass(c){ try { document.body.classList.remove(c); } catch (e) {} }
 
-      // ---- stats ----
       function bumpStats(ok) {
         if (counted) return;
         counted = true;
@@ -399,19 +388,9 @@
         } catch (e) {}
       }
 
-      // ---- sound ----
       function showSoundHint(){ addClass("video-muted"); }
       function hideSoundHint(){ removeClass("video-muted"); }
 
-      function tryUnmute() {
-        try { video.muted = false; video.volume = 1.0; } catch (e) {}
-        setTimeout(function () {
-          if (video.muted) showSoundHint();
-          else hideSoundHint();
-        }, 250);
-      }
-
-      // ---- fallback ----
       function fallbackToMessage() {
         if (failed || finished) return;
         failed = true;
@@ -421,33 +400,38 @@
         addClass("video-failed");
       }
 
-      // ---- src assignment (mirrors Test G's fsV.src = url) ----
       function assignSrc() {
-        if (srcAssigned) return;
-        srcAssigned = true;
-        try { video.src = VIDEO_URL; } catch (e) {}
+        if (srcSet) return;
+        srcSet = true;
+        try { video.src = VIDEO_URLS[urlIndex]; } catch (e) {}
         try { video.load(); } catch (e) {}
       }
 
-      // ---- play attempt ----
+      // ---- play: UNMUTED first, muted as fallback ----
       function attemptPlay() {
-        if (finished || failed) return;
+        if (playing || finished || failed) return;
 
-        try { if (video.ended) video.currentTime = 0; } catch (e) {}
+        // Sound with the video — this is the whole point.
+        try { video.muted = false; video.volume = 1.0; } catch (e) {}
 
-        // Try unmuted first — the jailbreak start was a user gesture.
         var p;
         try { p = video.play(); }
         catch (e) {
-          try { video.muted = true; p = video.play(); showSoundHint(); }
-          catch (e2) { fallbackToMessage(); return; }
+          // Sync throw — go muted.
+          try {
+            video.muted = true;
+            showSoundHint();
+            p = video.play();
+          } catch (e2) { fallbackToMessage(); return; }
         }
 
         if (p && typeof p.then === "function") {
           p.then(function () {
             playing = true;
+            if (video.muted) showSoundHint();
+            else hideSoundHint();
           }).catch(function () {
-            // Unmuted rejected — go muted.
+            // Unmuted rejected by the autoplay policy — drop to muted.
             try {
               video.muted = true;
               showSoundHint();
@@ -465,65 +449,77 @@
         }
       }
 
-      // ---- video events ----
       video.addEventListener("playing", function () {
         playing = true;
         removeClass("video-failed");
-        if (video.muted) tryUnmute();
+        if (video.muted) showSoundHint();
+        else hideSoundHint();
       });
-      video.addEventListener("error", fallbackToMessage);
+
+      video.addEventListener("error", function () {
+        // Try the next URL before giving up.
+        if (urlIndex < VIDEO_URLS.length - 1) {
+          urlIndex++;
+          srcSet = false;
+          assignSrc();
+          setTimeout(attemptPlay, 250);
+        } else {
+          fallbackToMessage();
+        }
+      });
+
       video.addEventListener("ended", function () {
         finished = true;
         try { video.pause(); } catch (e) {}
       });
 
-      // ---- user input: unmute if we're still muted ----
-      function onInput() {
+      // Any real press/tap unmutes an already-playing muted video
+      // (that's how the sound gets back after a rejected autoplay).
+      function onInput(ev) {
+        if (!ev || ev.isTrusted !== true) return;
         if (hasClass("video-active") && video.muted && !finished && !failed) {
-          tryUnmute();
+          try { video.muted = false; video.volume = 1.0; } catch (e) {}
+          hideSoundHint();
+          try { video.play(); } catch (e) {}
         }
       }
       document.addEventListener("click",      onInput, true);
       document.addEventListener("touchstart", onInput, true);
       document.addEventListener("keydown",    onInput, true);
 
-      // ---- start the video (mirrors Test G's flow) ----
       function startVideo() {
         if (started) return;
         started = true;
 
-        // 1. Flip the stage on FIRST — the video only exists in the
-        //    compositor once its parent is display:block.
+        // 1. Show the stage FIRST — the video only exists for the
+        //    compositor once its parent is in the render tree.
         addClass("video-active");
-
-        // 2. Flush layout so old WebKit actually sees the stage.
         void stage.offsetWidth;
 
-        // 3. Assign src (Test G did this at playback time).
+        // 2. Now attach src. Doing it in this order is what Test G does.
         assignSrc();
 
-        // 4. Try to play when we have frames. Test G listened for
-        //    "canplay" and only then called play(). Do the same.
-        var attempted = false;
+        // 3. Play as soon as we have frames.
+        var fired = false;
         function go() {
-          if (attempted || playing || finished || failed) return;
-          attempted = true;
+          if (fired || playing || finished || failed) return;
+          fired = true;
           attemptPlay();
         }
-        video.addEventListener("canplay",    go, { once: true });
-        video.addEventListener("loadeddata", go, { once: true });
+        if (video.readyState >= 2) setTimeout(go, 0);
+        video.addEventListener("canplay", go, false);
         setTimeout(go, 800);
         setTimeout(go, 2500);
+        setTimeout(go, 5000);
 
-        // 5. Watchdog: if nothing has rendered in 15s, fall back.
+        // 4. Hard watchdog.
         setTimeout(function () {
           if (!playing && !finished && !failed) fallbackToMessage();
         }, 15000);
       }
 
-      // ---- success / failure detection ----
       function evaluate() {
-        if (hasClass("done")) { bumpStats(true); startVideo(); return; }
+        if (hasClass("done")) { bumpStats(true);  startVideo(); return; }
         if (hasClass("fail")) { bumpStats(false); return; }
         if (outEl) {
           var txt = outEl.textContent || "";
@@ -533,7 +529,7 @@
             } else if (/PAYLOAD-RUNNING/.test(txt) ||
                        /PROOF-OK\s+PAYLOAD-RUNNING/.test(txt)) {
               bumpStats(true);
-              startVideo();
+              startVideo();   // fires regardless of body.log
             }
           }
         }
@@ -553,11 +549,10 @@
       }
       evaluate();
 
-      // Retry loop — deliberately gentle, never fires after ended.
       setInterval(function () {
         evaluate();
         if (finished || video.ended) { finished = true; return; }
-        if (hasClass("video-active") && !playing && video.paused && !failed && srcAssigned) {
+        if (hasClass("video-active") && !playing && video.paused && !failed && srcSet) {
           attemptPlay();
         }
       }, 4000);
