@@ -283,6 +283,7 @@
     function go() {
         setState("loading jailbreak...", "warn");
         setPrompt("");
+        try { sessionStorage.setItem("jb-auth", "1"); } catch(e) {}
         location.replace(target);
     }
 
